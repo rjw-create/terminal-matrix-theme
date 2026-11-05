@@ -1,9 +1,11 @@
 // Falling binary digits behind the terminal text, for Windows Terminal's
-// experimental.pixelShaderPath. No textures or libraries needed.
-// Tune RAIN_STRENGTH (0 to 1) to make the rain fainter or brighter.
+// experimental.pixelShaderPath, plus an optional faint word layer.
+// Tune RAIN_STRENGTH and WORD_STRENGTH (0 to 1) to make each fainter or brighter.
 
 Texture2D shaderTexture;
 SamplerState samplerState;
+// The word image from experimental.pixelShaderImagePath. Unset means no words.
+Texture2D wordTexture : register(t1);
 
 cbuffer PixelShaderSettings
 {
@@ -15,6 +17,9 @@ cbuffer PixelShaderSettings
 
 #define RAIN_STRENGTH 0.30
 #define TRAIL_ROWS 18.0
+#define WORD_STRENGTH 0.35
+// How fast the words drift upward, in pixels per second.
+#define WORD_DRIFT_PX 6.0
 
 float hash(float2 p)
 {
@@ -55,8 +60,19 @@ float4 main(float4 pos : SV_POSITION, float2 tex : TEXCOORD) : SV_TARGET
 
     float3 rain = float3(0.0, 1.0, 0.25) * shape * fade * headBoost * inTrail * active * RAIN_STRENGTH;
 
-    // Only draw where the terminal itself is dark, so text stays crisp.
+    // The word image is drawn 1:1 in pixels and wraps, so it tiles on any window size.
+    float3 words = float3(0.0, 0.0, 0.0);
+    uint wordW, wordH;
+    wordTexture.GetDimensions(wordW, wordH);
+    if (wordW > 0 && wordH > 0)
+    {
+        float2 wuv = frac(float2(px.x / wordW, (px.y + time * WORD_DRIFT_PX * scale) / wordH));
+        words = wordTexture.Sample(samplerState, wuv).rgb * WORD_STRENGTH;
+    }
+
+    // Only draw where the terminal itself is dark, so text stays crisp. The mask is measured
+    // on the terminal pixel before rain and words are added, so they never count as text.
     float textMask = saturate(max(color.r, max(color.g, color.b)) * 4.0);
-    color.rgb += rain * (1.0 - textMask);
+    color.rgb += (rain + words) * (1.0 - textMask);
     return color;
 }

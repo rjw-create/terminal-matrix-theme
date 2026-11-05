@@ -13,7 +13,10 @@
   5. Adds green typed-text colors and a startup banner to your PowerShell profile(s).
   Run uninstall.ps1 to undo.
 .PARAMETER NoRain
-  Skip the falling-binary background shader.
+  Skip the falling-binary background shader. The word layer (unless -NoWords) is then shown as a
+  static backgroundImage instead of drifting inside the shader.
+.PARAMETER NoWords
+  Skip the faint background layer of programming terms.
 .PARAMETER ClaudeTheme
   'ansi' (default) sets Claude Code's theme to the built-in dark-ansi, which uses the terminal's 16 colors
   (green with the Matrix Green scheme). 'custom' sets custom:matrix, for Claude Code versions that load
@@ -23,6 +26,7 @@
 #>
 param(
   [switch]$NoRain,
+  [switch]$NoWords,
   [switch]$NoClaudeBanner,
   [ValidateSet('ansi', 'custom')][string]$ClaudeTheme = 'ansi'
 )
@@ -58,13 +62,14 @@ $WtSettings = @($WtCandidates | Where-Object { Test-Path $_ })
 
 $SrcScheme = Join-Path $PSScriptRoot 'windows-terminal\matrix-scheme.json'
 $SrcShader = Join-Path $PSScriptRoot 'windows-terminal\matrix-rain.hlsl'
+$SrcWords = Join-Path $PSScriptRoot 'windows-terminal\assets\hacker-words.png'
 $SrcTheme = Join-Path $PSScriptRoot 'claude-code\themes\matrix.json'
 $SrcVerbs = Join-Path $PSScriptRoot 'claude-code\spinner-verbs.json'
 $SrcAnnounce = Join-Path $PSScriptRoot 'claude-code\company-announcements.json'
 $SrcTips = Join-Path $PSScriptRoot 'claude-code\spinner-tips.json'
 $SrcBanner = Join-Path $PSScriptRoot ('claude-code\' + $HookMarker)
 $SrcProfileBlock = Join-Path $PSScriptRoot 'powershell\profile-block.ps1'
-foreach ($f in @($SrcScheme, $SrcShader, $SrcTheme, $SrcVerbs, $SrcAnnounce, $SrcTips, $SrcBanner, $SrcProfileBlock)) {
+foreach ($f in @($SrcScheme, $SrcShader, $SrcWords, $SrcTheme, $SrcVerbs, $SrcAnnounce, $SrcTips, $SrcBanner, $SrcProfileBlock)) {
   if (-not (Test-Path $f)) { throw "Missing source file: $f" }
   # Fail early if a source file is not valid JSON.
   if ($f -like '*.json') { $null = Read-Json $f }
@@ -124,12 +129,24 @@ if ($ShowBannerHook) {
 # 2c. Windows Terminal settings.json.
 $schemeDoc = Read-Json $SrcScheme
 $ShaderDest = Join-Path $AssetDir 'matrix-rain.hlsl'
+$WordsDest = Join-Path $AssetDir 'hacker-words.png'
 $ours = [ordered]@{
   colorScheme = $SchemeName
   font        = $schemeDoc.profile.font
   cursorShape = $schemeDoc.profile.cursorShape
 }
 if (-not $NoRain) { $ours['experimental.pixelShaderPath'] = $ShaderDest }
+# Words: the shader scrolls the image from texture t1; without the shader it is a static, dimmed background.
+$wordKeys = [ordered]@{}
+if (-not $NoWords) {
+  if ($NoRain) {
+    $wordKeys['backgroundImage'] = $WordsDest
+    $wordKeys['backgroundImageOpacity'] = 0.5
+  } else {
+    $wordKeys['experimental.pixelShaderImagePath'] = $WordsDest
+  }
+}
+foreach ($k in $wordKeys.Keys) { $ours[$k] = $wordKeys[$k] }
 $PowerShellGuids = @('{61c54bbd-c2c6-5271-96e7-009a87ff44bf}', '{574e775e-4f2a-5b96-ac1e-a2962a402336}')
 
 $wtPending = @()
@@ -176,6 +193,28 @@ if (Test-Path $StateFile) {
   foreach ($top in @('wt', 'hook')) {
     if (-not (Has-Prop $saved $top)) { $saved | Add-Member -NotePropertyName $top -NotePropertyValue $state[$top] -Force }
   }
+  # A newer version may set keys an older install did not record. Add those (their "previous" is the
+  # value before this run, which is untouched by us), and refresh "installed" on known keys so
+  # uninstall still recognises our value after an upgrade.
+  foreach ($name in $state.keys.Keys) {
+    if (Has-Prop $saved.keys $name) { $saved.keys.$name.installed = $state.keys[$name].installed }
+    else { $saved.keys | Add-Member -NotePropertyName $name -NotePropertyValue $state.keys[$name] }
+  }
+  foreach ($rec in @($state.wt)) {
+    $old = @($saved.wt) | Where-Object { $_.path -eq $rec.path } | Select-Object -First 1
+    if ($null -eq $old) { $saved.wt = @($saved.wt) + $rec; continue }
+    foreach ($guid in $rec.profiles.Keys) {
+      if (-not (Has-Prop $old.profiles $guid)) {
+        $old.profiles | Add-Member -NotePropertyName $guid -NotePropertyValue $rec.profiles[$guid]
+        continue
+      }
+      $oldKeys = $old.profiles.$guid
+      foreach ($k in $rec.profiles[$guid].Keys) {
+        if (Has-Prop $oldKeys $k) { $oldKeys.$k.installed = $rec.profiles[$guid][$k].installed }
+        else { $oldKeys | Add-Member -NotePropertyName $k -NotePropertyValue $rec.profiles[$guid][$k] }
+      }
+    }
+  }
   [System.IO.File]::WriteAllText($StateFile, ($saved | ConvertTo-Json -Depth 32), $Utf8NoBom)
 } else {
   [System.IO.File]::WriteAllText($StateFile, ($state | ConvertTo-Json -Depth 32), $Utf8NoBom)
@@ -193,6 +232,10 @@ foreach ($p in $wtPending) {
 if (-not $NoRain) {
   Copy-Item -Path $SrcShader -Destination $ShaderDest -Force
   Write-Host "Installed shader: $ShaderDest"
+}
+if (-not $NoWords) {
+  Copy-Item -Path $SrcWords -Destination $WordsDest -Force
+  Write-Host "Installed word layer: $WordsDest"
 }
 
 New-Item -ItemType Directory -Force -Path $ThemeDir | Out-Null
