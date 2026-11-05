@@ -2,7 +2,11 @@
 
 A green-on-black "movie hacker" look for Windows Terminal and Claude Code on Windows.
 
-- Windows Terminal: pure black background, electric green text (#00FF41, with neon #39FF14 and pure #00FF00 accents), green block cursor, Cascadia Mono.
+Inspired by MylesA1234/HackerScreen (https://github.com/MylesA1234/HackerScreen). No code, colors or word lists were copied from it.
+
+- Windows Terminal: pure black background, electric green text (#00FF41, with neon #39FF14 accents), a full green 16-color set (only red stays red, for errors), green block cursor, Cascadia Mono, falling binary rain and a faint layer of drifting programming terms.
+- A dedicated "Claude // Hacker" Windows Terminal profile and a "Claude Hacker" desktop shortcut: a short boot sequence, ACCESS GRANTED, then Claude Code.
+- PowerShell: an ACCESS GRANTED prompt (ACCESS DENIED in red after a failed command), a green banner and green typed text.
 - Claude Code: green through the built-in `dark-ansi` theme by default (or a custom `matrix` theme with `-ClaudeTheme custom`; greens for text, spinner and borders; red and yellow kept for errors and warnings) plus about 40 extra spinner words such as "Decrypting 0110" and "Bypassing the firewall".
 
 I could not take screenshots when building this, so there is no image yet. Add one to the repo if you like.
@@ -16,10 +20,14 @@ I could not take screenshots when building this, so there is no image yet. Add o
 | `claude-code/spinner-verbs.json` | The `spinnerVerbs` setting: mode `append`, so your words are added to Claude Code's built-in ones. |
 | `claude-code/company-announcements.json` | The `companyAnnouncements` setting: 12 startup lines such as "> wake up, neo". Claude Code shows one at random per session. |
 | `claude-code/spinner-tips.json` | The `spinnerTipsOverride` setting: 15 short real Claude Code tips under the label "intel", with `excludeDefault` true so only these show. |
-| `windows-terminal/matrix-rain.hlsl` | A pixel shader that draws falling 0 and 1 digits behind the text. Optional, see "Raining binary". |
-| `powershell/profile-block.ps1` | A marked block that install.ps1 appends to your PowerShell profile: a green binary-crab startup banner and green PSReadLine colors for the text you type. |
+| `windows-terminal/matrix-rain.hlsl` | A pixel shader that draws falling 0 and 1 digits behind the text, and scrolls the word layer. Optional, see "Raining binary" and "Word layer". |
+| `windows-terminal/assets/hacker-words.png` | The word layer: 16 programming and hacker terms in dim green on black, 1920x1080, made by `tools/build-word-layer.ps1`. |
+| `windows-terminal/hacker-profile.json` | The fixed parts of the "Claude // Hacker" profile (guid, name, padding, tab color). install.ps1 adds the command, scheme, font, cursor, shader and word layer. |
+| `tools/build-word-layer.ps1` | Regenerates the word layer PNG with System.Drawing (built into Windows). Edit the term list or sizes at the top. |
+| `powershell/start-hacker.ps1` | What the Claude // Hacker profile runs: boot sequence, ACCESS GRANTED, then `claude`. |
+| `powershell/profile-block.ps1` | A marked block that install.ps1 appends to your PowerShell profile: a green binary-crab startup banner, green PSReadLine colors for the text you type and the ACCESS GRANTED prompt. |
 | `claude-code/matrix-session-banner.ps1` | A SessionStart hook script that prints a small binary crab banner when Claude Code starts. |
-| `install.ps1` | Backs up settings, edits Windows Terminal's `settings.json`, installs the theme, and merges `theme`, `spinnerVerbs`, `companyAnnouncements`, `spinnerTipsOverride` and a SessionStart hook into `~/.claude/settings.json`. Options: `-NoRain`, `-NoClaudeBanner`, `-ClaudeTheme ansi` or `custom`. |
+| `install.ps1` | Backs up settings, edits Windows Terminal's `settings.json`, adds the Claude // Hacker profile and desktop shortcut, installs the theme, and merges `theme`, `spinnerVerbs`, `companyAnnouncements`, `spinnerTipsOverride` and a SessionStart hook into `~/.claude/settings.json`. Options: see "Switches". |
 | `uninstall.ps1` | Removes exactly what install added. |
 
 ## Install
@@ -33,13 +41,29 @@ powershell -ExecutionPolicy Bypass -File .\install.ps1
 What it changes, and prints as it goes:
 
 1. Copies `~/.claude/settings.json`, Windows Terminal's `settings.json` and each PowerShell profile to `.bak-<timestamp>` files next to the originals.
-2. Edits Windows Terminal's `settings.json` (JSON-aware, other keys kept): adds the "Matrix Green" scheme to `schemes`, and sets `colorScheme`, `font`, `cursorShape` and (unless `-NoRain`) `experimental.pixelShaderPath` on the default profile and on the Windows PowerShell and PowerShell 7 profiles, matched by guid. The file is rewritten by PowerShell, so its indentation may change. If it contains `//` comments the script skips it and tells you.
+2. Edits Windows Terminal's `settings.json` (JSON-aware, other keys kept): adds the "Matrix Green" scheme to `schemes`, and sets `colorScheme`, `font`, `cursorShape`, the rain shader and the word layer (see "Word layer") on the default profile and on the Windows PowerShell and PowerShell 7 profiles, matched by guid. It also adds the "Claude // Hacker" profile (replacing an older copy with the same guid, so running install again never duplicates it). The file is rewritten by PowerShell, so its indentation may change. If it contains `//` comments the script skips it and tells you.
 3. Copies the theme to `~/.claude/themes/matrix.json`.
 4. Unless you pass `-NoRain`, copies `matrix-rain.hlsl` to `%LOCALAPPDATA%\terminal-matrix-theme\` and points the profiles at it.
 5. Writes a block between `# >>> terminal-matrix-theme >>>` and `# <<< terminal-matrix-theme <<<` into your PowerShell profile (the running shell's profile, plus the PowerShell 7 profile if `pwsh` is installed). If the block is already there it is refreshed in place. The banner is skipped when `MATRIX_THEME_NO_BANNER=1` is set or the shell was started with `-Command`, `-File` or `-EncodedCommand`. The color part does nothing if PSReadLine is not loaded. Set `MATRIX_THEME_PROFILE_PATHS` (semicolon separated) to target other files, for example copies when testing.
 6. Sets `theme`, `spinnerVerbs`, `companyAnnouncements` and `spinnerTipsOverride` in `~/.claude/settings.json` and, unless `-NoClaudeBanner`, appends a `SessionStart` hook (existing hooks are kept). See "Claude Code theme: ansi or custom" for the `theme` value.
 
-Set `MATRIX_THEME_WT_SETTINGS` to a settings.json path to run the Windows Terminal edit on a copy.
+7. Creates a "Claude Hacker" shortcut on your desktop (see "Desktop shortcut").
+
+Set `MATRIX_THEME_WT_SETTINGS` to a settings.json path to run the Windows Terminal edit on a copy, and `MATRIX_THEME_DESKTOP` to a folder to put the shortcut somewhere other than your desktop. Together with `CLAUDE_CONFIG_DIR`, `LOCALAPPDATA` and `MATRIX_THEME_PROFILE_PATHS` this lets you test the whole install on copies.
+
+### Switches
+
+All are for `install.ps1`, for example `powershell -ExecutionPolicy Bypass -File .\install.ps1 -NoWords -NoPrompt`.
+
+| Switch | Effect |
+| --- | --- |
+| `-NoRain` | No rain shader. The word layer, if on, becomes a still background image. |
+| `-NoWords` | No word layer. |
+| `-NoPrompt` | Keep your normal PowerShell prompt instead of ACCESS GRANTED. |
+| `-NoClaudeBanner` | No Claude Code SessionStart banner hook. |
+| `-ClaudeTheme ansi` or `custom` | Which Claude Code theme to select, see "Claude Code theme: ansi or custom". Default `ansi`. |
+
+To change switches after installing, run `uninstall.ps1` and then `install.ps1` with the new switches. Running install again over an existing install keeps keys set by the earlier run.
 
 It also saves your previous values of those four keys to `~/.claude/terminal-matrix-theme-state.json` so uninstall can put them back.
 
@@ -57,7 +81,60 @@ Run in Windows PowerShell, from the repo folder:
 powershell -ExecutionPolicy Bypass -File .\uninstall.ps1
 ```
 
-This restores the Windows Terminal keys it changed and removes the "Matrix Green" scheme, deletes the shader, banner script, theme file and any old fragment folder, removes the marked block from your PowerShell profile(s), restores your previous values of the four Claude Code keys and removes only the banner hook it added. A value you changed after install is left alone. The `.bak-*` backups stay in place.
+This restores the Windows Terminal keys it changed and removes the "Matrix Green" scheme and the "Claude // Hacker" profile, deletes the desktop shortcut (only if it still opens that profile), deletes the shader, word image, start script, banner script, theme file and any old fragment folder, removes the marked block from your PowerShell profile(s), restores your previous values of the four Claude Code keys and removes only the banner hook it added. A value you changed after install is left alone. The `.bak-*` backups stay in place.
+
+## Claude // Hacker profile
+
+A new entry in Windows Terminal's tab dropdown. It uses the Matrix Green scheme, the rain and word layer, a block cursor, 12 px padding and a dark green tab. Its command is `powershell.exe -NoLogo -NoExit -ExecutionPolicy Bypass -File <start-hacker.ps1>`, which:
+
+1. Shows a boot sequence of eight made-up status lines, about 1.5 seconds in total. They are decoration, not real checks. Press any key to skip it.
+2. Prints ACCESS GRANTED.
+3. Starts `claude` from your PATH. If it is not found, it says so and leaves you at a normal PowerShell prompt. When Claude Code exits, the tab stays open at a PowerShell prompt.
+
+Your other profiles are not replaced; they get the same reskin as before.
+
+## Desktop shortcut
+
+`install.ps1` creates `Claude Hacker.lnk` on your desktop. It runs `wt.exe -p "Claude // Hacker"`, which opens Windows Terminal with that profile. The desktop folder comes from Windows (`[Environment]::GetFolderPath('Desktop')`), so a desktop moved to OneDrive is found. If a different shortcut with that name already exists, install leaves it alone and tells you.
+
+## ACCESS GRANTED prompt
+
+The PowerShell profile block sets the prompt to:
+
+```text
+ACCESS GRANTED :: C:\current\folder
+>
+```
+
+After a command fails it shows ACCESS DENIED in red instead. The exit code of the last command (`$LASTEXITCODE`) is kept. It sits inside the marked block, between its own `prompt` markers, so `-NoPrompt` leaves it out and uninstall removes it with the block.
+
+## Word layer
+
+A faint layer of 16 programming and hacker terms (NULL POINTER, KERNEL PANIC, RACE CONDITION and so on) behind the text.
+
+How it is shown, and why: the Windows Terminal docs say a background image "can be a .jpg, .png, or .gif file" but do not say a GIF animates, and do not describe how a background image combines with a pixel shader. They do document `experimental.pixelShaderImagePath`, an image that is "made available in texture register `t1`" of the shader (profile appearance page, linked below). So:
+
+- With the rain on (the default), `hacker-words.png` is given to the shader through `experimental.pixelShaderImagePath`, and the shader scrolls it slowly upward, so the words drift. The shader decides where the terminal has text before it adds the words and rain, and only draws them on dark pixels, so they never cover or blur text.
+- With `-NoRain`, there is no shader, so the PNG is set as a still `backgroundImage` with `backgroundImageOpacity` 0.5.
+- With `-NoWords`, neither is set.
+
+If your Windows Terminal version does not support `experimental.pixelShaderImagePath`, the shader sees an empty texture and draws no words; the rain still works.
+
+### Tuning rain and words
+
+- Rain brightness: `RAIN_STRENGTH` (0 to 1, default 0.30) at the top of `windows-terminal/matrix-rain.hlsl`.
+- Word brightness: `WORD_STRENGTH` (0 to 1, default 0.35) in the same file.
+- Word drift speed: `WORD_DRIFT_PX` (pixels per second, default 6; 0 stops it).
+- Word brightness with `-NoRain`: `backgroundImageOpacity` in Windows Terminal (Settings > profile > Appearance > Background image opacity), or the 0.5 in `install.ps1`.
+- Different words: edit `$Terms` in `tools/build-word-layer.ps1`, then run it in Windows PowerShell from the repo folder:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\tools\build-word-layer.ps1
+```
+
+After editing the shader or image, run `install.ps1` again to copy them into place, then open a new tab (I have not checked whether an open tab picks up a changed shader file).
+
+The image is 1920x1080 and tiles, so it covers larger windows too.
 
 ## Raining binary
 
@@ -66,7 +143,7 @@ The background rain is a custom pixel shader, set through Windows Terminal's `ex
 - The shader draws 0 and 1 shapes in columns that fall at different speeds, at 30 percent strength. Change `RAIN_STRENGTH` at the top of `windows-terminal/matrix-rain.hlsl` (0 to 1) and run `install.ps1` again.
 - It is experimental. Microsoft says the feature's continued existence is not guaranteed, that it overrides `experimental.retroTerminalEffect`, and that if a shader fails to compile the terminal shows a warning and ignores it. It also redraws every frame, so it uses some GPU.
 - To skip it: `powershell -ExecutionPolicy Bypass -File .\install.ps1 -NoRain` (Windows PowerShell). To remove it later, run `uninstall.ps1`, then `install.ps1 -NoRain`.
-- I compiled the shader with the Windows `d3dcompiler_47` library (target `ps_5_0`) and it compiled without errors, but I could not look at the result on screen.
+- I compiled the shader, including the word layer, with the Windows `d3dcompiler_47` library (targets `ps_5_0` and `ps_4_0`) and it compiled without errors, but I could not look at the result on screen.
 
 ## Change the words
 
@@ -92,7 +169,11 @@ Why the fallback exists: on one install (Claude Code 2.1.318) `/theme` did not l
 powershell -ExecutionPolicy Bypass -File .\install.ps1 -ClaudeTheme custom
 ```
 
-In `ansi` mode Claude's accent colors are whatever the scheme's ANSI colors are. The docs do not say which ANSI slots `dark-ansi` uses for the orange brand accent or for other roles, so I cannot tell you that. I left the scheme's yellow slots golden (`yellow`, `brightYellow`) so warnings stay distinct from the greens, and errors use red. If you see an orange or yellow accent you dislike, edit those slots in `windows-terminal/matrix-scheme.json` (for example to a lime such as #ccff00) and run `install.ps1` again; the cost is that warnings then look closer to the greens.
+In `ansi` mode Claude's accent colors are whatever the scheme's ANSI colors are. The docs do not say which ANSI slots `dark-ansi` uses for the orange brand accent or for other roles, so I cannot tell you that. Every slot except `red` and `brightRed` is now a green or green-tinted color, including the yellow slots (lime, #c6ff3d and #e0ff80), so Claude's accents stay green. The cost is that warnings drawn in yellow look closer to the greens; errors stay salmon-red (#ff5f57, #ff8f85). If you want gold warnings back, set `yellow` and `brightYellow` in `windows-terminal/matrix-scheme.json` (they were #ffd400 and #fff04d) and run `install.ps1` again.
+
+### Contrast
+
+WCAG contrast ratios against the black background (AA asks for at least 4.5:1 for normal text): foreground 15.38:1, white 18.74:1, brightWhite 19.99:1, red 7.03:1, brightRed 9.52:1, and brightBlack, the dimmest text color, 6.10:1. Foreground text on the selection color is 6.01:1.
 
 ## Banners
 
