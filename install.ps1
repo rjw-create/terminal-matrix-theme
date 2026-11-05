@@ -87,6 +87,7 @@ $ClaudeSettings = Join-Path $ClaudeHome 'settings.json'
 $StateFile = Join-Path $ClaudeHome 'terminal-matrix-theme-state.json'
 $ThemeDir = Join-Path $ClaudeHome 'themes'
 $AssetDir = Join-Path $env:LOCALAPPDATA $AppName
+$FragmentDir = Join-Path $env:LOCALAPPDATA ('Microsoft\Windows Terminal\Fragments\' + $AppName)
 
 # MATRIX_THEME_WT_SETTINGS overrides the Windows Terminal settings.json path, for testing on a copy.
 if ($env:MATRIX_THEME_WT_SETTINGS) {
@@ -221,6 +222,14 @@ foreach ($wtPath in $WtSettings) {
   $targets = @($PowerShellGuids)
   if (Has-Prop $wt 'defaultProfile') { $targets += [string]$wt.defaultProfile }
   if (Has-Prop $wt.profiles 'list') { $list = $wt.profiles.list } else { $list = $wt.profiles }
+  # Windows Terminal stamps "source" on a profile the first version's fragment updated. The fragment is
+  # removed below, so drop the stale mark.
+  foreach ($prof in @($list)) {
+    if ((Has-Prop $prof 'source') -and [string]$prof.source -eq $AppName) {
+      $prof.PSObject.Properties.Remove('source')
+      Write-Host "Removed stale fragment mark from profile $($prof.guid)."
+    }
+  }
   foreach ($prof in @($list)) {
     if (-not (Has-Prop $prof 'guid')) { continue }
     if ([string]$prof.guid -ieq $HackerGuid) { continue }   # handled separately below
@@ -283,6 +292,12 @@ if (Test-Path $StateFile) {
 
 # --- 4. Apply ----------------------------------------------------------------
 New-Item -ItemType Directory -Force -Path $AssetDir | Out-Null
+# The first version installed a Windows Terminal fragment. Left in place it keeps re-applying its own
+# scheme and profile changes on top of the settings.json edits, so remove it.
+if (Test-Path $FragmentDir) {
+  Remove-Item -Recurse -Force -Path $FragmentDir
+  Write-Host "Removed old fragment folder: $FragmentDir"
+}
 
 foreach ($p in $wtPending) {
   $json = $p.Obj | ConvertTo-Json -Depth 32

@@ -86,6 +86,11 @@ if (Test-Path $StateFile) {
 
       if (Has-Prop $wt.profiles 'list') { $list = $wt.profiles.list } else { $list = $wt.profiles }
 
+      # Stale "source" mark Windows Terminal stamped on profiles the first version's fragment updated.
+      foreach ($prof in @($list)) {
+        if ((Has-Prop $prof 'source') -and [string]$prof.source -eq $AppName) { $prof.PSObject.Properties.Remove('source') }
+      }
+
       # Claude // Hacker profile: remove ours, and put back a profile that had the same guid before install.
       if ((Has-Prop $rec 'hackerProfile') -and $null -ne $rec.hackerProfile) {
         $newList = @(@($list) | Where-Object { -not ((Has-Prop $_ 'guid') -and ([string]$_.guid -ieq $HackerGuid)) })
