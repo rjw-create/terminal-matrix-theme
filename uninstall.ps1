@@ -2,9 +2,9 @@
 .SYNOPSIS
   Removes exactly what install.ps1 added.
 .DESCRIPTION
-  Deletes the Windows Terminal fragment and the Claude Code theme file, puts "theme" back to
-  its previous value and removes "spinnerVerbs" (or restores the previous one) in Claude
-  Code's settings.json. Other keys, including any changes made since install, are untouched.
+  Deletes the Windows Terminal fragment, the rain shader and the Claude Code theme file, and puts the
+  four keys install set (theme, spinnerVerbs, companyAnnouncements, spinnerTipsOverride) back to their
+  previous values (or removes them) in Claude Code's settings.json. Other keys, including any changes made since install, are untouched.
   The timestamped .bak-* backups made by install.ps1 are left in place.
 #>
 $ErrorActionPreference = 'Stop'
@@ -18,10 +18,15 @@ $ClaudeSettings = Join-Path $ClaudeHome 'settings.json'
 $StateFile = Join-Path $ClaudeHome 'terminal-matrix-theme-state.json'
 $ThemeFile = Join-Path $ClaudeHome ('themes\' + $ThemeSlug + '.json')
 $FragmentDir = Join-Path $env:LOCALAPPDATA ('Microsoft\Windows Terminal\Fragments\' + $AppName)
+$AssetDir = Join-Path $env:LOCALAPPDATA $AppName
 
 if (Test-Path $FragmentDir) {
   Remove-Item -Recurse -Force -Path $FragmentDir
   Write-Host "Removed fragment folder: $FragmentDir"
+}
+if (Test-Path $AssetDir) {
+  Remove-Item -Recurse -Force -Path $AssetDir
+  Write-Host "Removed shader folder: $AssetDir"
 }
 if (Test-Path $ThemeFile) {
   Remove-Item -Force -Path $ThemeFile
@@ -31,24 +36,23 @@ if (Test-Path $ThemeFile) {
 if ((Test-Path $ClaudeSettings) -and (Test-Path $StateFile)) {
   $state = Get-Content -Raw -Encoding UTF8 -Path $StateFile | ConvertFrom-Json
   $settings = Get-Content -Raw -Encoding UTF8 -Path $ClaudeSettings | ConvertFrom-Json
-  $names = $settings.PSObject.Properties.Name
 
-  if (($names -contains 'theme') -and ($settings.theme -eq ('custom:' + $ThemeSlug))) {
-    if ($state.hadTheme) {
-      $settings.theme = $state.previousTheme
-      Write-Host "Restored theme = $($state.previousTheme)"
-    } else {
-      $settings.PSObject.Properties.Remove('theme')
-      Write-Host 'Removed theme key (it was not set before install).'
+  foreach ($entry in $state.keys.PSObject.Properties) {
+    $name = $entry.Name
+    $rec = $entry.Value
+    if (-not ($settings.PSObject.Properties.Name -contains $name)) { continue }
+    # Only touch a key that still holds the value install wrote; anything you changed since stays.
+    $current = $settings.$name | ConvertTo-Json -Compress -Depth 32
+    if ($current -ne $rec.installed) {
+      Write-Host "Left $name alone (it was changed after install)."
+      continue
     }
-  }
-  if ($names -contains 'spinnerVerbs') {
-    if ($state.hadSpinnerVerbs) {
-      $settings.spinnerVerbs = $state.previousSpinnerVerbs
-      Write-Host 'Restored previous spinnerVerbs.'
+    if ($rec.had) {
+      $settings | Add-Member -NotePropertyName $name -NotePropertyValue $rec.previous -Force
+      Write-Host "Restored previous $name."
     } else {
-      $settings.PSObject.Properties.Remove('spinnerVerbs')
-      Write-Host 'Removed spinnerVerbs key.'
+      $settings.PSObject.Properties.Remove($name)
+      Write-Host "Removed $name (it was not set before install)."
     }
   }
   $json = $settings | ConvertTo-Json -Depth 32

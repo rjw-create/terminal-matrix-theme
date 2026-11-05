@@ -1,0 +1,21 @@
+{
+  "label": "intel",
+  "excludeDefault": true,
+  "tips": [
+    "Press Esc to abort the current operation, operator",
+    "With an empty prompt, press Esc twice to open the rewind menu",
+    "Press Shift+Tab to cycle permission modes, including plan mode",
+    "Run /clear between unrelated tasks to wipe the context and start clean",
+    "Run /compact to shrink a long session before the context window fills",
+    "Type ! then a command to run it in your shell and keep the output in the session",
+    "Press Ctrl+J to add a newline without sending the prompt",
+    "Run /status to see which settings files were loaded for this session",
+    "Run claude doctor in your shell when a setting seems to be ignored",
+    "Run /model to switch models mid-session, /effort to change reasoning effort",
+    "Run /usage to check your usage meter before a long run",
+    "Run /theme to switch colors, or press Ctrl+E on a custom theme to edit it",
+    "Put standing rules in CLAUDE.md so you never repeat yourself",
+    "Type @ in a prompt to point Claude at an exact file",
+    "Run /config to change settings without editing JSON by hand"
+  ]
+}
