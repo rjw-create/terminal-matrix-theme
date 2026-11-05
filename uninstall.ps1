@@ -138,6 +138,19 @@ if (Test-Path $StateFile) {
   Write-Host 'No install state file found; Claude Code and Windows Terminal settings left unchanged.'
 }
 
+# --- Desktop shortcut: deleted only if it still opens our profile ---
+if ($env:MATRIX_THEME_DESKTOP) { $Desktop = $env:MATRIX_THEME_DESKTOP } else { $Desktop = [Environment]::GetFolderPath('Desktop') }
+$ShortcutPath = Join-Path $Desktop 'Claude Hacker.lnk'
+if (Test-Path $ShortcutPath) {
+  $lnk = (New-Object -ComObject WScript.Shell).CreateShortcut($ShortcutPath)
+  if (($lnk.TargetPath -like '*\wt.exe') -and ($lnk.Arguments -eq '-p "Claude // Hacker"')) {
+    Remove-Item -Force -Path $ShortcutPath
+    Write-Host "Removed desktop shortcut: $ShortcutPath"
+  } else {
+    Write-Host "Left $ShortcutPath alone (it does not open the Claude // Hacker profile)."
+  }
+}
+
 # --- PowerShell profiles ---
 $MarkStart = '# >>> terminal-matrix-theme >>>'
 $MarkEnd = '# <<< terminal-matrix-theme <<<'

@@ -48,8 +48,9 @@ New test override: `MATRIX_THEME_DESKTOP` (desktop folder for the shortcut).
 The state file (`terminal-matrix-theme-state.json`) is written on the first install only, so "previous" values
 are never our own. Today a re-install only adds missing top-level keys. That would miss new per-profile keys
 (for example `experimental.pixelShaderImagePath` for someone who installed the older version), so re-install now
-also merges missing Windows Terminal records, profiles and keys into the saved state. New state entries:
-`hackerProfile` (per settings.json path: whether a profile with our GUID existed) and `shortcut` (the .lnk path).
+also merges missing Windows Terminal records, profiles and keys into the saved state. New state entry:
+`hackerProfile` (per settings.json path: whether a profile with our GUID existed). The shortcut needs no state:
+uninstall works out the same desktop path and checks the shortcut is ours.
 
 The Claude // Hacker profile has a fixed GUID (`{7dee5498-89ee-42d5-a3e3-be4fd0239c50}`); install removes any
 profile with that GUID before adding it, so re-install never duplicates it. The reskin loop skips that GUID.

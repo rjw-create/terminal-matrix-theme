@@ -330,6 +330,27 @@ foreach ($pp in $ProfilePaths) {
   Write-Host "Wrote Matrix block (typed-text colors and banner) in: $pp"
 }
 
+# --- 6. Desktop shortcut that opens the Claude // Hacker profile -------------
+# GetFolderPath follows a OneDrive-redirected desktop. MATRIX_THEME_DESKTOP overrides it, for testing.
+if ($env:MATRIX_THEME_DESKTOP) { $Desktop = $env:MATRIX_THEME_DESKTOP } else { $Desktop = [Environment]::GetFolderPath('Desktop') }
+$ShortcutPath = Join-Path $Desktop 'Claude Hacker.lnk'
+$ShortcutArgs = '-p "' + $hackerDoc.name + '"'
+$wtExe = Get-Command wt.exe -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+$shell = New-Object -ComObject WScript.Shell
+if ($null -eq $wtExe) {
+  Write-Host 'Skipped the desktop shortcut: wt.exe was not found on PATH.'
+} elseif ((Test-Path $ShortcutPath) -and ($shell.CreateShortcut($ShortcutPath).Arguments -ne $ShortcutArgs)) {
+  Write-Host "Skipped the desktop shortcut: $ShortcutPath already exists and is not ours."
+} else {
+  $lnk = $shell.CreateShortcut($ShortcutPath)
+  $lnk.TargetPath = $wtExe.Source
+  $lnk.Arguments = $ShortcutArgs
+  $lnk.WorkingDirectory = $HOME
+  $lnk.Description = 'Opens Claude Code in the Claude // Hacker Windows Terminal profile'
+  $lnk.Save()
+  Write-Host "Created desktop shortcut: $ShortcutPath"
+}
+
 Write-Host ''
 Write-Host 'Done. Windows Terminal reloads settings.json on save; if a tab still looks old, open a new tab.'
 Write-Host 'Claude Code picks up the theme, verbs and banner in a new session.'
