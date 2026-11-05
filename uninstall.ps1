@@ -29,8 +29,8 @@ if (Test-Path $ThemeFile) {
 }
 
 if ((Test-Path $ClaudeSettings) -and (Test-Path $StateFile)) {
-  $state = Get-Content -Raw -Path $StateFile | ConvertFrom-Json
-  $settings = Get-Content -Raw -Path $ClaudeSettings | ConvertFrom-Json
+  $state = Get-Content -Raw -Encoding UTF8 -Path $StateFile | ConvertFrom-Json
+  $settings = Get-Content -Raw -Encoding UTF8 -Path $ClaudeSettings | ConvertFrom-Json
   $names = $settings.PSObject.Properties.Name
 
   if (($names -contains 'theme') -and ($settings.theme -eq ('custom:' + $ThemeSlug))) {

@@ -34,7 +34,7 @@ $SrcVerbs = Join-Path $PSScriptRoot 'claude-code\spinner-verbs.json'
 foreach ($f in @($SrcFragment, $SrcTheme, $SrcVerbs)) {
   if (-not (Test-Path $f)) { throw "Missing source file: $f" }
   # Fail early if a source file is not valid JSON.
-  $null = Get-Content -Raw -Path $f | ConvertFrom-Json
+  $null = Get-Content -Raw -Encoding UTF8 -Path $f | ConvertFrom-Json
 }
 
 # --- 1. Backups -----------------------------------------------------------
@@ -59,9 +59,9 @@ Copy-Item -Path $SrcTheme -Destination (Join-Path $ThemeDir ($ThemeSlug + '.json
 Write-Host "Installed Claude theme: $(Join-Path $ThemeDir ($ThemeSlug + '.json'))"
 
 # --- 4. Claude Code settings.json (merge only our two keys) ---------------
-$verbs = Get-Content -Raw -Path $SrcVerbs | ConvertFrom-Json
+$verbs = Get-Content -Raw -Encoding UTF8 -Path $SrcVerbs | ConvertFrom-Json
 if (Test-Path $ClaudeSettings) {
-  $settings = Get-Content -Raw -Path $ClaudeSettings | ConvertFrom-Json
+  $settings = Get-Content -Raw -Encoding UTF8 -Path $ClaudeSettings | ConvertFrom-Json
 } else {
   New-Item -ItemType Directory -Force -Path $ClaudeHome | Out-Null
   $settings = New-Object PSCustomObject
@@ -94,4 +94,4 @@ Write-Host "Updated $ClaudeSettings : theme = custom:$ThemeSlug, spinnerVerbs = 
 
 Write-Host ''
 Write-Host 'Done. Windows Terminal reloads fragments automatically; if the PowerShell tab is not green, reopen the window.'
-Write-Host 'Claude Code picks up the theme and verbs on the next session (or immediately; it watches these files).'
+Write-Host 'Claude Code picks up the theme and verbs in a new session.'
