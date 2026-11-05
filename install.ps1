@@ -55,12 +55,39 @@ $Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 
 function Read-Json([string]$Path) { Get-Content -Raw -Encoding UTF8 -Path $Path | ConvertFrom-Json }
 function Has-Prop($Obj, [string]$Name) { $Obj.PSObject.Properties.Name -contains $Name }
+# The first version saved flat hadTheme/previousTheme/hadSpinnerVerbs/previousSpinnerVerbs instead of a
+# "keys" map, and later versions never recorded companyAnnouncements or spinnerTipsOverride in it.
+# Convert that shape on read, keeping every "previous" value. For the keys it never recorded, the
+# pre-theme value comes from the first install's backup of settings.json (listed under "backups"),
+# or counts as "not set" if that backup is gone. "installed" is unknown (null) for converted keys.
+function Convert-OldState($State, [string]$SettingsPath) {
+  if (Has-Prop $State 'keys') { return $State }
+  $before = $null
+  $bak = @($State.backups) | Where-Object { $_ -and ([string]$_).StartsWith($SettingsPath + '.bak-', [StringComparison]::OrdinalIgnoreCase) -and (Test-Path $_) } | Select-Object -First 1
+  if ($bak) { $before = Read-Json $bak }
+  $keys = [ordered]@{}
+  foreach ($name in @('theme', 'spinnerVerbs', 'companyAnnouncements', 'spinnerTipsOverride')) {
+    $flat = $name.Substring(0, 1).ToUpper() + $name.Substring(1)
+    if (Has-Prop $State ('had' + $flat)) {
+      $had = [bool]$State.('had' + $flat); $prev = $State.('previous' + $flat)
+    } elseif ($null -ne $before -and (Has-Prop $before $name)) {
+      $had = $true; $prev = $before.$name
+    } else {
+      $had = $false; $prev = $null
+    }
+    $keys[$name] = [pscustomobject]@{ had = $had; previous = $prev; installed = $null }
+  }
+  foreach ($old in @('hadTheme', 'previousTheme', 'hadSpinnerVerbs', 'previousSpinnerVerbs')) { $State.PSObject.Properties.Remove($old) }
+  $State | Add-Member -NotePropertyName 'keys' -NotePropertyValue ([pscustomobject]$keys)
+  return $State
+}
 
 if ($env:CLAUDE_CONFIG_DIR) { $ClaudeHome = $env:CLAUDE_CONFIG_DIR } else { $ClaudeHome = Join-Path $HOME '.claude' }
 $ClaudeSettings = Join-Path $ClaudeHome 'settings.json'
 $StateFile = Join-Path $ClaudeHome 'terminal-matrix-theme-state.json'
 $ThemeDir = Join-Path $ClaudeHome 'themes'
 $AssetDir = Join-Path $env:LOCALAPPDATA $AppName
+$FragmentDir = Join-Path $env:LOCALAPPDATA ('Microsoft\Windows Terminal\Fragments\' + $AppName)
 
 # MATRIX_THEME_WT_SETTINGS overrides the Windows Terminal settings.json path, for testing on a copy.
 if ($env:MATRIX_THEME_WT_SETTINGS) {
@@ -195,6 +222,14 @@ foreach ($wtPath in $WtSettings) {
   $targets = @($PowerShellGuids)
   if (Has-Prop $wt 'defaultProfile') { $targets += [string]$wt.defaultProfile }
   if (Has-Prop $wt.profiles 'list') { $list = $wt.profiles.list } else { $list = $wt.profiles }
+  # Windows Terminal stamps "source" on a profile the first version's fragment updated. The fragment is
+  # removed below, so drop the stale mark.
+  foreach ($prof in @($list)) {
+    if ((Has-Prop $prof 'source') -and [string]$prof.source -eq $AppName) {
+      $prof.PSObject.Properties.Remove('source')
+      Write-Host "Removed stale fragment mark from profile $($prof.guid)."
+    }
+  }
   foreach ($prof in @($list)) {
     if (-not (Has-Prop $prof 'guid')) { continue }
     if ([string]$prof.guid -ieq $HackerGuid) { continue }   # handled separately below
@@ -223,7 +258,7 @@ $state.wt = @($state.wt)
 
 # --- 3. Save state (first install only, so "previous" is never our own value) ---
 if (Test-Path $StateFile) {
-  $saved = Read-Json $StateFile
+  $saved = Convert-OldState (Read-Json $StateFile) $ClaudeSettings
   foreach ($top in @('wt', 'hook')) {
     if (-not (Has-Prop $saved $top)) { $saved | Add-Member -NotePropertyName $top -NotePropertyValue $state[$top] -Force }
   }
@@ -257,6 +292,12 @@ if (Test-Path $StateFile) {
 
 # --- 4. Apply ----------------------------------------------------------------
 New-Item -ItemType Directory -Force -Path $AssetDir | Out-Null
+# The first version installed a Windows Terminal fragment. Left in place it keeps re-applying its own
+# scheme and profile changes on top of the settings.json edits, so remove it.
+if (Test-Path $FragmentDir) {
+  Remove-Item -Recurse -Force -Path $FragmentDir
+  Write-Host "Removed old fragment folder: $FragmentDir"
+}
 
 foreach ($p in $wtPending) {
   $json = $p.Obj | ConvertTo-Json -Depth 32
