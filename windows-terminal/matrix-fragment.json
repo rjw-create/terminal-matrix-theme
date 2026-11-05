@@ -1,0 +1,47 @@
+{
+  "profiles": [
+    {
+      "updates": "{61c54bbd-c2c6-5271-96e7-009a87ff44bf}",
+      "colorScheme": "Matrix Green",
+      "font": {
+        "face": "Cascadia Mono",
+        "size": 12
+      },
+      "cursorShape": "filledBox"
+    },
+    {
+      "updates": "{574e775e-4f2a-5b96-ac1e-a2962a402336}",
+      "colorScheme": "Matrix Green",
+      "font": {
+        "face": "Cascadia Mono",
+        "size": 12
+      },
+      "cursorShape": "filledBox"
+    }
+  ],
+  "schemes": [
+    {
+      "name": "Matrix Green",
+      "background": "#000000",
+      "foreground": "#00ff41",
+      "cursorColor": "#00ff41",
+      "selectionBackground": "#0b5d1e",
+      "black": "#000000",
+      "red": "#d75f5f",
+      "green": "#00b32d",
+      "yellow": "#b5c94a",
+      "blue": "#1f9d55",
+      "purple": "#5fa87a",
+      "cyan": "#00c8a0",
+      "white": "#9fd9ae",
+      "brightBlack": "#3f7f4f",
+      "brightRed": "#ff7b7b",
+      "brightGreen": "#00ff41",
+      "brightYellow": "#d7ff5f",
+      "brightBlue": "#39e07a",
+      "brightPurple": "#8fe3b0",
+      "brightCyan": "#5fffd7",
+      "brightWhite": "#d6ffe0"
+    }
+  ]
+}

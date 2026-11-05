@@ -53,7 +53,7 @@ Edit `claude-code/spinner-verbs.json` and run `install.ps1` again. Use `"mode": 
 ## Change the colors
 
 - Terminal: edit the `Matrix Green` scheme in the fragment, then run `install.ps1` again.
-- Claude Code: edit `~/.claude/themes/matrix.json`. Claude Code reloads theme files while running.
+- Claude Code: edit `~/.claude/themes/matrix.json`.
 
 ## Limits
 
