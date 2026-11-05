@@ -4,13 +4,17 @@
 .DESCRIPTION
   1. Backs up Claude Code's settings.json and Windows Terminal's settings.json.
   2. Edits Windows Terminal's settings.json directly: adds the "Matrix Green" color scheme and sets
-     colorScheme, font, cursorShape (and the rain shader path unless -NoRain) on the default profile
-     and the PowerShell profiles. Previous values of exactly those keys are saved for uninstall.
+     colorScheme, font, cursorShape, the rain shader (unless -NoRain) and the word layer (unless
+     -NoWords) on the default profile and the PowerShell profiles. Previous values of exactly those
+     keys are saved for uninstall. Also adds a "Claude // Hacker" profile that runs a short boot
+     sequence and then claude.
   3. Copies the Claude Code theme into <claude home>\themes.
   4. Sets "theme", "spinnerVerbs", "companyAnnouncements" and "spinnerTipsOverride" in Claude
      Code's settings.json, and (unless -NoClaudeBanner) adds a SessionStart hook that shows a small
      banner. Other keys and other hooks are left alone.
-  5. Adds green typed-text colors and a startup banner to your PowerShell profile(s).
+  5. Adds green typed-text colors, a startup banner and (unless -NoPrompt) an ACCESS GRANTED prompt
+     to your PowerShell profile(s).
+  6. Creates a "Claude Hacker" desktop shortcut that opens the Claude // Hacker profile.
   Run uninstall.ps1 to undo.
 .PARAMETER NoRain
   Skip the falling-binary background shader. The word layer (unless -NoWords) is then shown as a

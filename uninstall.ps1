@@ -3,7 +3,9 @@
   Removes exactly what install.ps1 added.
 .DESCRIPTION
   Restores the Windows Terminal settings.json keys install set (and removes the Matrix Green
-  scheme), deletes the rain shader, banner script and Claude Code theme file, puts the four Claude
+  scheme and the Claude // Hacker profile), deletes the "Claude Hacker" desktop shortcut if it still
+  opens that profile, deletes the rain shader, word image, start script, banner script and Claude
+  Code theme file, puts the four Claude
   Code keys (theme, spinnerVerbs, companyAnnouncements, spinnerTipsOverride) back to their previous
   values, removes the SessionStart banner hook, and removes the marked block from PowerShell
   profiles. Anything you changed after install is left alone.
