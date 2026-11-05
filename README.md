@@ -2,7 +2,7 @@
 
 A green-on-black "movie hacker" look for Windows Terminal and Claude Code on Windows.
 
-- Windows Terminal: pure black background, phosphor green text (#00ff41), green block cursor, Cascadia Mono.
+- Windows Terminal: pure black background, electric green text (#00FF41, with neon #39FF14 and pure #00FF00 accents), green block cursor, Cascadia Mono.
 - Claude Code: a custom `matrix` theme (greens for text, spinner and borders; red and yellow kept for errors and warnings) plus about 40 extra spinner words such as "Decrypting 0110" and "Bypassing the firewall".
 
 I could not take screenshots when building this, so there is no image yet. Add one to the repo if you like.
@@ -14,6 +14,7 @@ I could not take screenshots when building this, so there is no image yet. Add o
 | `windows-terminal/matrix-fragment.json` | A Windows Terminal JSON fragment. It adds the color scheme "Matrix Green" and applies it, with Cascadia Mono 12 pt and a filled-box cursor, to the Windows PowerShell and PowerShell 7 profiles. |
 | `claude-code/themes/matrix.json` | Claude Code custom theme (base `dark`, color tokens overridden to greens). |
 | `claude-code/spinner-verbs.json` | The `spinnerVerbs` setting: mode `append`, so your words are added to Claude Code's built-in ones. |
+| `powershell/profile-block.ps1` | A marked block that install.ps1 appends to your PowerShell profile. It sets PSReadLine colors so the text you type is green. |
 | `install.ps1` | Backs up settings, installs the fragment and theme, and merges `theme` and `spinnerVerbs` into `~/.claude/settings.json`. |
 | `uninstall.ps1` | Removes exactly what install added. |
 
@@ -30,7 +31,8 @@ What it changes, and prints as it goes:
 1. Copies `~/.claude/settings.json` and Windows Terminal's `settings.json` to `settings.json.bak-<timestamp>` next to the originals.
 2. Copies the fragment to `%LOCALAPPDATA%\Microsoft\Windows Terminal\Fragments\terminal-matrix-theme\`. Windows Terminal's own `settings.json` is not edited.
 3. Copies the theme to `~/.claude/themes/matrix.json`.
-4. Sets `"theme": "custom:matrix"` and `spinnerVerbs` in `~/.claude/settings.json`. Other keys are kept. The file is rewritten by PowerShell, so its indentation may change, and comments are not allowed in that file anyway.
+4. Appends a block between `# >>> terminal-matrix-theme >>>` and `# <<< terminal-matrix-theme <<<` to your PowerShell profile (the running shell's profile, plus the PowerShell 7 profile if `pwsh` is installed). The profile is backed up first, the block is not added twice, and it does nothing if PSReadLine is not loaded. Set `MATRIX_THEME_PROFILE_PATHS` (semicolon separated) to target other files, for example copies when testing.
+5. Sets `"theme": "custom:matrix"` and `spinnerVerbs` in `~/.claude/settings.json`. Other keys are kept. The file is rewritten by PowerShell, so its indentation may change, and comments are not allowed in that file anyway.
 
 It also saves your previous `theme` and `spinnerVerbs` values to `~/.claude/terminal-matrix-theme-state.json` so uninstall can put them back.
 
@@ -44,7 +46,7 @@ Run in Windows PowerShell, from the repo folder:
 powershell -ExecutionPolicy Bypass -File .\uninstall.ps1
 ```
 
-This deletes the fragment folder and theme file, restores your previous `theme`, and removes `spinnerVerbs` (or restores your previous one). The `.bak-*` backups stay in place.
+This deletes the fragment folder and theme file, removes the marked block from your PowerShell profile(s), restores your previous `theme`, and removes `spinnerVerbs` (or restores your previous one). The `.bak-*` backups stay in place.
 
 ## Change the words
 
@@ -54,6 +56,8 @@ Edit `claude-code/spinner-verbs.json` and run `install.ps1` again. Use `"mode": 
 
 - Terminal: edit the `Matrix Green` scheme in the fragment, then run `install.ps1` again.
 - Claude Code: edit `~/.claude/themes/matrix.json`.
+- Typed text in Claude Code: the docs list no color token for the prompt input, so typed text follows `text`, the closest documented match ("Default foreground text"). It is set to #00FF41, and `promptBorder` is #39FF14.
+- Typed text in PowerShell: edit the colors in `powershell/profile-block.ps1` and run `uninstall.ps1` then `install.ps1`.
 
 ## Limits
 

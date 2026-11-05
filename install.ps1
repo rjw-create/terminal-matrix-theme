@@ -92,6 +92,40 @@ $null = $json | ConvertFrom-Json   # prove it parses before writing
 [System.IO.File]::WriteAllText($ClaudeSettings, $json, $Utf8NoBom)
 Write-Host "Updated $ClaudeSettings : theme = custom:$ThemeSlug, spinnerVerbs = append ($($verbs.verbs.Count) verbs)"
 
+# --- 5. PowerShell profile(s): green typed text via PSReadLine ------------
+# MATRIX_THEME_PROFILE_PATHS (semicolon separated) overrides the target list, for testing on copies.
+$MarkStart = '# >>> terminal-matrix-theme >>>'
+$MarkEnd = '# <<< terminal-matrix-theme <<<'
+if ($env:MATRIX_THEME_PROFILE_PATHS) {
+  $ProfilePaths = @($env:MATRIX_THEME_PROFILE_PATHS -split ';' | Where-Object { $_ })
+} else {
+  $ProfilePaths = @($PROFILE.CurrentUserCurrentHost)
+  if (Get-Command pwsh -ErrorAction SilentlyContinue) {
+    $ProfilePaths += (Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'PowerShell\Microsoft.PowerShell_profile.ps1')
+  }
+  $ProfilePaths = @($ProfilePaths | Select-Object -Unique)
+}
+$block = ([System.IO.File]::ReadAllText((Join-Path $PSScriptRoot 'powershell\profile-block.ps1'), $Utf8NoBom)).TrimEnd() -replace "`r?`n", "`r`n"
+foreach ($pp in $ProfilePaths) {
+  # Decode without stripping a BOM so the file round-trips byte for byte.
+  if (Test-Path $pp) { $text = $Utf8NoBom.GetString([System.IO.File]::ReadAllBytes($pp)) } else { $text = $null }
+  if ($null -ne $text -and $text.Contains($MarkStart)) {
+    Write-Host "Profile already has the Matrix block, left alone: $pp"
+    continue
+  }
+  if ($null -ne $text) {
+    $b = "$pp.bak-$Stamp"
+    Copy-Item -Path $pp -Destination $b
+    Write-Host "Backed up: $b"
+    $new = $text + "`r`n" + $block
+  } else {
+    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $pp) | Out-Null
+    $new = $block
+  }
+  [System.IO.File]::WriteAllBytes($pp, $Utf8NoBom.GetBytes($new))
+  Write-Host "Added PSReadLine colors block to: $pp"
+}
+
 Write-Host ''
 Write-Host 'Done. Windows Terminal reloads fragments automatically; if the PowerShell tab is not green, reopen the window.'
 Write-Host 'Claude Code picks up the theme and verbs in a new session.'
