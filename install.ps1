@@ -29,13 +29,20 @@
   custom themes. The theme file is installed either way.
 .PARAMETER NoClaudeBanner
   Skip the Claude Code SessionStart banner hook.
+.PARAMETER RainStrength
+  Brightness of the binary rain, 0 to 1 (default 0.12). Written into the installed shader copy. If you
+  leave it out on a re-install, the value already in the installed shader is kept.
+.PARAMETER WordStrength
+  Brightness of the word layer inside the shader, 0 to 1 (default 0.35). Same re-install rule.
 #>
 param(
   [switch]$NoRain,
   [switch]$NoWords,
   [switch]$NoPrompt,
   [switch]$NoClaudeBanner,
-  [ValidateSet('ansi', 'custom')][string]$ClaudeTheme = 'ansi'
+  [ValidateSet('ansi', 'custom')][string]$ClaudeTheme = 'ansi',
+  [ValidateRange(0.0, 1.0)][double]$RainStrength = 0.12,
+  [ValidateRange(0.0, 1.0)][double]$WordStrength = 0.35
 )
 $ErrorActionPreference = 'Stop'
 
@@ -258,7 +265,27 @@ foreach ($p in $wtPending) {
   Write-Host "Updated Windows Terminal settings: $($p.Path)"
 }
 if (-not $NoRain) {
-  Copy-Item -Path $SrcShader -Destination $ShaderDest -Force
+  # Invariant culture: HLSL needs "0.12", and some Windows locales would format it as "0,12".
+  $inv = [System.Globalization.CultureInfo]::InvariantCulture
+  $shaderText = [System.IO.File]::ReadAllText($SrcShader, $Utf8NoBom)
+  $oldShader = $null
+  if (Test-Path $ShaderDest) { $oldShader = [System.IO.File]::ReadAllText($ShaderDest, $Utf8NoBom) }
+  foreach ($tune in @(@('RAIN_STRENGTH', 'RainStrength', $RainStrength), @('WORD_STRENGTH', 'WordStrength', $WordStrength))) {
+    $define = $tune[0]; $param = $tune[1]; $value = $tune[2]
+    $pattern = '(?m)^#define ' + $define + ' ([0-9.]+)\s*$'
+    # Without the switch, a re-install keeps the value already in the installed shader.
+    if (-not $PSBoundParameters.ContainsKey($param) -and $null -ne $oldShader) {
+      $m = [regex]::Match($oldShader, $pattern)
+      if ($m.Success) {
+        $kept = [double]::Parse($m.Groups[1].Value, $inv)
+        if ($kept -ge 0 -and $kept -le 1) { $value = $kept }
+      }
+    }
+    if (-not [regex]::IsMatch($shaderText, $pattern)) { throw "Missing #define $define in $SrcShader" }
+    $shaderText = [regex]::Replace($shaderText, $pattern, ('#define ' + $define + ' ' + $value.ToString('0.0##', $inv)))
+    Write-Host "Shader $define = $($value.ToString('0.0##', $inv))"
+  }
+  [System.IO.File]::WriteAllText($ShaderDest, $shaderText, $Utf8NoBom)
   Write-Host "Installed shader: $ShaderDest"
 }
 if (-not $NoWords) {

@@ -15,8 +15,8 @@ cbuffer PixelShaderSettings
     float4 background;
 };
 
-#define RAIN_STRENGTH 0.30
-#define TRAIL_ROWS 18.0
+#define RAIN_STRENGTH 0.12
+#define TRAIL_ROWS 10.0
 #define WORD_STRENGTH 0.35
 // How fast the words drift upward, in pixels per second.
 #define WORD_DRIFT_PX 6.0

@@ -62,6 +62,8 @@ All are for `install.ps1`, for example `powershell -ExecutionPolicy Bypass -File
 | `-NoPrompt` | Keep your normal PowerShell prompt instead of ACCESS GRANTED. |
 | `-NoClaudeBanner` | No Claude Code SessionStart banner hook. |
 | `-ClaudeTheme ansi` or `custom` | Which Claude Code theme to select, see "Claude Code theme: ansi or custom". Default `ansi`. |
+| `-RainStrength 0.12` | Rain brightness, 0 to 1. Default 0.12. See "Tuning rain and words". |
+| `-WordStrength 0.35` | Word layer brightness inside the shader, 0 to 1. Default 0.35. |
 
 To change switches after installing, run `uninstall.ps1` and then `install.ps1` with the new switches. Running install again over an existing install keeps keys set by the earlier run.
 
@@ -122,8 +124,21 @@ If your Windows Terminal version does not support `experimental.pixelShaderImage
 
 ### Tuning rain and words
 
-- Rain brightness: `RAIN_STRENGTH` (0 to 1, default 0.30) at the top of `windows-terminal/matrix-rain.hlsl`.
-- Word brightness: `WORD_STRENGTH` (0 to 1, default 0.35) in the same file.
+The easy way is the install switches, which write the values into the installed copy of the shader (the repo file is not changed). Run in Windows PowerShell from the repo folder, for example:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\install.ps1 -RainStrength 0.08 -WordStrength 0.25
+```
+
+- `-RainStrength`: rain brightness, 0 (off) to 1. Default 0.12.
+- `-WordStrength`: word brightness, 0 (off) to 1. Default 0.35.
+- Values outside 0 to 1 are refused. If you run `install.ps1` again without a switch, the value already in the installed shader is kept, so a re-install does not undo your tuning. After `uninstall.ps1` the defaults apply again.
+
+You can also edit the defaults at the top of `windows-terminal/matrix-rain.hlsl`:
+
+- Rain brightness: `RAIN_STRENGTH` (default 0.12).
+- Rain trail length: `TRAIL_ROWS`, in character rows (default 10).
+- Word brightness: `WORD_STRENGTH` (default 0.35).
 - Word drift speed: `WORD_DRIFT_PX` (pixels per second, default 6; 0 stops it).
 - Word brightness with `-NoRain`: `backgroundImageOpacity` in Windows Terminal (Settings > profile > Appearance > Background image opacity), or the 0.5 in `install.ps1`.
 - Different words: edit `$Terms` in `tools/build-word-layer.ps1`, then run it in Windows PowerShell from the repo folder:
@@ -140,7 +155,7 @@ The image is 1920x1080 and tiles, so it covers larger windows too.
 
 The background rain is a custom pixel shader, set through Windows Terminal's `experimental.pixelShaderPath` profile setting. I chose it over an animated GIF because the Microsoft docs describe a `time` value the shader can use to animate, while the `backgroundImage` page only says a `.gif` is accepted and does not say it animates. A shader is also plain text, adds no binary file, and keeps the text crisp because the rain is drawn only where the terminal pixel is dark.
 
-- The shader draws 0 and 1 shapes in columns that fall at different speeds, at 30 percent strength. Change `RAIN_STRENGTH` at the top of `windows-terminal/matrix-rain.hlsl` (0 to 1) and run `install.ps1` again.
+- The shader draws 0 and 1 shapes in columns that fall at different speeds, at 12 percent strength with 10-row trails. Change it with `install.ps1 -RainStrength` (see "Tuning rain and words").
 - It is experimental. Microsoft says the feature's continued existence is not guaranteed, that it overrides `experimental.retroTerminalEffect`, and that if a shader fails to compile the terminal shows a warning and ignores it. It also redraws every frame, so it uses some GPU.
 - To skip it: `powershell -ExecutionPolicy Bypass -File .\install.ps1 -NoRain` (Windows PowerShell). To remove it later, run `uninstall.ps1`, then `install.ps1 -NoRain`.
 - I compiled the shader, including the word layer, with the Windows `d3dcompiler_47` library (targets `ps_5_0` and `ps_4_0`) and it compiled without errors, but I could not look at the result on screen.
