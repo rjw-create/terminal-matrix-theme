@@ -6,9 +6,16 @@
   2. Copies the Windows Terminal fragment (color scheme + PowerShell profile tweaks)
      into the per-user fragments folder. Windows Terminal's own settings.json is not edited.
   3. Copies the Claude Code theme into <claude home>\themes.
-  4. Sets "theme" and "spinnerVerbs" in Claude Code's settings.json, leaving other keys alone.
+  4. Sets "theme", "spinnerVerbs", "companyAnnouncements" and "spinnerTipsOverride" in Claude
+     Code's settings.json, leaving other keys alone.
+  5. Adds green typed-text colors to your PowerShell profile(s).
+  6. Unless -NoRain is given, installs a falling-binary pixel shader and points the PowerShell
+     profiles at it (Windows Terminal experimental.pixelShaderPath).
   Run uninstall.ps1 to undo.
+.PARAMETER NoRain
+  Skip the falling-binary background shader.
 #>
+param([switch]$NoRain)
 $ErrorActionPreference = 'Stop'
 
 $AppName = 'terminal-matrix-theme'
@@ -31,10 +38,14 @@ $WtSettings = @(
 $SrcFragment = Join-Path $PSScriptRoot 'windows-terminal\matrix-fragment.json'
 $SrcTheme = Join-Path $PSScriptRoot 'claude-code\themes\matrix.json'
 $SrcVerbs = Join-Path $PSScriptRoot 'claude-code\spinner-verbs.json'
-foreach ($f in @($SrcFragment, $SrcTheme, $SrcVerbs)) {
+$SrcAnnounce = Join-Path $PSScriptRoot 'claude-code\company-announcements.json'
+$SrcTips = Join-Path $PSScriptRoot 'claude-code\spinner-tips.json'
+$SrcShader = Join-Path $PSScriptRoot 'windows-terminal\matrix-rain.hlsl'
+$AssetDir = Join-Path $env:LOCALAPPDATA $AppName
+foreach ($f in @($SrcFragment, $SrcTheme, $SrcVerbs, $SrcAnnounce, $SrcTips, $SrcShader)) {
   if (-not (Test-Path $f)) { throw "Missing source file: $f" }
   # Fail early if a source file is not valid JSON.
-  $null = Get-Content -Raw -Encoding UTF8 -Path $f | ConvertFrom-Json
+  if ($f -notlike '*.hlsl') { $null = Get-Content -Raw -Encoding UTF8 -Path $f | ConvertFrom-Json }
 }
 
 # --- 1. Backups -----------------------------------------------------------
@@ -50,16 +61,37 @@ foreach ($f in (@($ClaudeSettings) + $WtSettings)) {
 
 # --- 2. Windows Terminal fragment ----------------------------------------
 New-Item -ItemType Directory -Force -Path $FragmentDir | Out-Null
-Copy-Item -Path $SrcFragment -Destination (Join-Path $FragmentDir 'matrix-fragment.json') -Force
-Write-Host "Installed fragment: $(Join-Path $FragmentDir 'matrix-fragment.json')"
+$FragmentDest = Join-Path $FragmentDir 'matrix-fragment.json'
+if ($NoRain) {
+  Copy-Item -Path $SrcFragment -Destination $FragmentDest -Force
+} else {
+  # The shader lives in a stable per-user folder; the installed fragment gets its absolute path.
+  New-Item -ItemType Directory -Force -Path $AssetDir | Out-Null
+  $ShaderDest = Join-Path $AssetDir 'matrix-rain.hlsl'
+  Copy-Item -Path $SrcShader -Destination $ShaderDest -Force
+  Write-Host "Installed shader: $ShaderDest"
+  $frag = Get-Content -Raw -Encoding UTF8 -Path $SrcFragment | ConvertFrom-Json
+  foreach ($prof in $frag.profiles) {
+    $prof | Add-Member -NotePropertyName 'experimental.pixelShaderPath' -NotePropertyValue $ShaderDest -Force
+  }
+  [System.IO.File]::WriteAllText($FragmentDest, ($frag | ConvertTo-Json -Depth 10), $Utf8NoBom)
+}
+Write-Host "Installed fragment: $FragmentDest"
 
 # --- 3. Claude Code theme -------------------------------------------------
 New-Item -ItemType Directory -Force -Path $ThemeDir | Out-Null
 Copy-Item -Path $SrcTheme -Destination (Join-Path $ThemeDir ($ThemeSlug + '.json')) -Force
 Write-Host "Installed Claude theme: $(Join-Path $ThemeDir ($ThemeSlug + '.json'))"
 
-# --- 4. Claude Code settings.json (merge only our two keys) ---------------
-$verbs = Get-Content -Raw -Encoding UTF8 -Path $SrcVerbs | ConvertFrom-Json
+# --- 4. Claude Code settings.json (merge only our four keys) --------------
+# Assign first, then cast: wrapping the pipeline in @() would nest a top-level JSON array.
+$announcements = Get-Content -Raw -Encoding UTF8 -Path $SrcAnnounce | ConvertFrom-Json
+$Managed = [ordered]@{
+  theme                = ('custom:' + $ThemeSlug)
+  spinnerVerbs         = (Get-Content -Raw -Encoding UTF8 -Path $SrcVerbs | ConvertFrom-Json)
+  companyAnnouncements = [string[]]$announcements
+  spinnerTipsOverride  = (Get-Content -Raw -Encoding UTF8 -Path $SrcTips | ConvertFrom-Json)
+}
 if (Test-Path $ClaudeSettings) {
   $settings = Get-Content -Raw -Encoding UTF8 -Path $ClaudeSettings | ConvertFrom-Json
 } else {
@@ -67,30 +99,30 @@ if (Test-Path $ClaudeSettings) {
   $settings = New-Object PSCustomObject
 }
 
-$state = [ordered]@{
-  hadTheme = $false; previousTheme = $null
-  hadSpinnerVerbs = $false; previousSpinnerVerbs = $null
-  backups = $backups
-}
-if ($settings.PSObject.Properties.Name -contains 'theme') {
-  $state.hadTheme = $true
-  $state.previousTheme = $settings.theme
-}
-if ($settings.PSObject.Properties.Name -contains 'spinnerVerbs') {
-  $state.hadSpinnerVerbs = $true
-  $state.previousSpinnerVerbs = $settings.spinnerVerbs
+# Remember each key's previous value so uninstall can put it back.
+$state = [ordered]@{ keys = [ordered]@{}; backups = $backups }
+foreach ($name in $Managed.Keys) {
+  $had = $settings.PSObject.Properties.Name -contains $name
+  $prev = $null
+  if ($had) { $prev = $settings.$name }
+  $state.keys[$name] = [ordered]@{
+    had = $had
+    previous = $prev
+    installed = ($Managed[$name] | ConvertTo-Json -Compress -Depth 32)
+  }
 }
 # Do not overwrite the saved "previous" values if install is run twice.
 if (-not (Test-Path $StateFile)) {
   [System.IO.File]::WriteAllText($StateFile, ($state | ConvertTo-Json -Depth 32), $Utf8NoBom)
 }
 
-$settings | Add-Member -NotePropertyName 'theme' -NotePropertyValue ('custom:' + $ThemeSlug) -Force
-$settings | Add-Member -NotePropertyName 'spinnerVerbs' -NotePropertyValue $verbs -Force
+foreach ($name in $Managed.Keys) {
+  $settings | Add-Member -NotePropertyName $name -NotePropertyValue $Managed[$name] -Force
+}
 $json = $settings | ConvertTo-Json -Depth 32
 $null = $json | ConvertFrom-Json   # prove it parses before writing
 [System.IO.File]::WriteAllText($ClaudeSettings, $json, $Utf8NoBom)
-Write-Host "Updated $ClaudeSettings : theme = custom:$ThemeSlug, spinnerVerbs = append ($($verbs.verbs.Count) verbs)"
+Write-Host "Updated $ClaudeSettings : set $($Managed.Keys -join ', ')"
 
 # --- 5. PowerShell profile(s): green typed text via PSReadLine ------------
 # MATRIX_THEME_PROFILE_PATHS (semicolon separated) overrides the target list, for testing on copies.
