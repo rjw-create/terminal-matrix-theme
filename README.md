@@ -34,7 +34,7 @@ What it changes, and prints as it goes:
 1. Copies `~/.claude/settings.json` and Windows Terminal's `settings.json` to `settings.json.bak-<timestamp>` next to the originals.
 2. Copies the fragment to `%LOCALAPPDATA%\Microsoft\Windows Terminal\Fragments\terminal-matrix-theme\`. Windows Terminal's own `settings.json` is not edited.
 3. Copies the theme to `~/.claude/themes/matrix.json`.
-4. Unless you pass `-NoRain`, copies `matrix-rain.hlsl` to `%LOCALAPPDATA%	erminal-matrix-theme\` and writes its absolute path into the installed fragment as `experimental.pixelShaderPath` (the repo copy of the fragment stays machine-independent).
+4. Unless you pass `-NoRain`, copies `matrix-rain.hlsl` to `%LOCALAPPDATA%\terminal-matrix-theme\` and writes its absolute path into the installed fragment as `experimental.pixelShaderPath` (the repo copy of the fragment stays machine-independent).
 5. Appends a block between `# >>> terminal-matrix-theme >>>` and `# <<< terminal-matrix-theme <<<` to your PowerShell profile (the running shell's profile, plus the PowerShell 7 profile if `pwsh` is installed). The profile is backed up first, the block is not added twice, and it does nothing if PSReadLine is not loaded. Set `MATRIX_THEME_PROFILE_PATHS` (semicolon separated) to target other files, for example copies when testing.
 6. Sets `"theme": "custom:matrix"`, `spinnerVerbs`, `companyAnnouncements` and `spinnerTipsOverride` in `~/.claude/settings.json`. Other keys are kept. The file is rewritten by PowerShell, so its indentation may change, and comments are not allowed in that file anyway.
 
