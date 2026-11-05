@@ -60,6 +60,30 @@ if ((Test-Path $ClaudeSettings) -and (Test-Path $StateFile)) {
   Write-Host 'No install state file found; Claude Code settings.json left unchanged.'
 }
 
+$MarkStart = '# >>> terminal-matrix-theme >>>'
+$MarkEnd = '# <<< terminal-matrix-theme <<<'
+if ($env:MATRIX_THEME_PROFILE_PATHS) {
+  $ProfilePaths = @($env:MATRIX_THEME_PROFILE_PATHS -split ';' | Where-Object { $_ })
+} else {
+  $ProfilePaths = @($PROFILE.CurrentUserCurrentHost)
+  $ProfilePaths += (Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'PowerShell\Microsoft.PowerShell_profile.ps1')
+  $ProfilePaths = @($ProfilePaths | Select-Object -Unique)
+}
+$pattern = '(\r\n)?' + [regex]::Escape($MarkStart) + '[\s\S]*?' + [regex]::Escape($MarkEnd)
+foreach ($pp in $ProfilePaths) {
+  if (-not (Test-Path $pp)) { continue }
+  $text = $Utf8NoBom.GetString([System.IO.File]::ReadAllBytes($pp))
+  if (-not $text.Contains($MarkStart)) { continue }
+  $new = [regex]::Replace($text, $pattern, '')
+  if ($new.Length -eq 0) {
+    Remove-Item -Force -Path $pp   # install created this file just for the block
+    Write-Host "Removed profile that only held the Matrix block: $pp"
+  } else {
+    [System.IO.File]::WriteAllBytes($pp, $Utf8NoBom.GetBytes($new))
+    Write-Host "Removed Matrix block from: $pp"
+  }
+}
+
 Write-Host ''
 Write-Host 'Uninstalled. Windows Terminal settings.json was never edited, so nothing to restore there.'
 Write-Host 'Backups (*.bak-*) made by install.ps1 remain next to each settings file.'
