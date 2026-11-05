@@ -69,7 +69,9 @@ $SrcAnnounce = Join-Path $PSScriptRoot 'claude-code\company-announcements.json'
 $SrcTips = Join-Path $PSScriptRoot 'claude-code\spinner-tips.json'
 $SrcBanner = Join-Path $PSScriptRoot ('claude-code\' + $HookMarker)
 $SrcProfileBlock = Join-Path $PSScriptRoot 'powershell\profile-block.ps1'
-foreach ($f in @($SrcScheme, $SrcShader, $SrcWords, $SrcTheme, $SrcVerbs, $SrcAnnounce, $SrcTips, $SrcBanner, $SrcProfileBlock)) {
+$SrcHackerProfile = Join-Path $PSScriptRoot 'windows-terminal\hacker-profile.json'
+$SrcStart = Join-Path $PSScriptRoot 'powershell\start-hacker.ps1'
+foreach ($f in @($SrcScheme, $SrcShader, $SrcWords, $SrcTheme, $SrcVerbs, $SrcAnnounce, $SrcTips, $SrcBanner, $SrcProfileBlock, $SrcHackerProfile, $SrcStart)) {
   if (-not (Test-Path $f)) { throw "Missing source file: $f" }
   # Fail early if a source file is not valid JSON.
   if ($f -like '*.json') { $null = Read-Json $f }
@@ -149,6 +151,16 @@ if (-not $NoWords) {
 foreach ($k in $wordKeys.Keys) { $ours[$k] = $wordKeys[$k] }
 $PowerShellGuids = @('{61c54bbd-c2c6-5271-96e7-009a87ff44bf}', '{574e775e-4f2a-5b96-ac1e-a2962a402336}')
 
+# The dedicated "Claude // Hacker" profile: fixed guid, our look, and a command that runs the start script.
+$StartDest = Join-Path $AssetDir 'start-hacker.ps1'
+$hackerDoc = Read-Json $SrcHackerProfile
+$HackerGuid = [string]$hackerDoc.guid
+$hackerProfile = [ordered]@{}
+foreach ($p in $hackerDoc.PSObject.Properties) { $hackerProfile[$p.Name] = $p.Value }
+# -NoExit keeps a prompt in the tab after claude exits.
+$hackerProfile['commandline'] = 'powershell.exe -NoLogo -NoExit -ExecutionPolicy Bypass -File "' + $StartDest + '"'
+foreach ($k in $ours.Keys) { $hackerProfile[$k] = $ours[$k] }
+
 $wtPending = @()
 foreach ($wtPath in $WtSettings) {
   try { $wt = Read-Json $wtPath } catch {
@@ -171,6 +183,7 @@ foreach ($wtPath in $WtSettings) {
   if (Has-Prop $wt.profiles 'list') { $list = $wt.profiles.list } else { $list = $wt.profiles }
   foreach ($prof in @($list)) {
     if (-not (Has-Prop $prof 'guid')) { continue }
+    if ([string]$prof.guid -ieq $HackerGuid) { continue }   # handled separately below
     if (-not ($targets | Where-Object { $_ -ieq [string]$prof.guid })) { continue }
     $keyRecs = [ordered]@{}
     foreach ($k in $ours.Keys) {
@@ -182,6 +195,13 @@ foreach ($wtPath in $WtSettings) {
     }
     $rec.profiles[[string]$prof.guid] = $keyRecs
   }
+
+  # Claude // Hacker profile: drop any copy with our guid, then add ours, so re-install never duplicates it.
+  $oldHacker = @(@($list) | Where-Object { (Has-Prop $_ 'guid') -and ([string]$_.guid -ieq $HackerGuid) })
+  $rec.hackerProfile = [ordered]@{ had = ($oldHacker.Count -gt 0); previous = $null }
+  if ($oldHacker.Count -gt 0) { $rec.hackerProfile.previous = $oldHacker[0] }
+  $newList = @(@($list) | Where-Object { -not ((Has-Prop $_ 'guid') -and ([string]$_.guid -ieq $HackerGuid)) }) + [pscustomobject]$hackerProfile
+  if (Has-Prop $wt.profiles 'list') { $wt.profiles.list = $newList } else { $wt.profiles = $newList }
   $state.wt += $rec
   $wtPending += [pscustomobject]@{ Path = $wtPath; Obj = $wt }
 }
@@ -203,6 +223,7 @@ if (Test-Path $StateFile) {
   foreach ($rec in @($state.wt)) {
     $old = @($saved.wt) | Where-Object { $_.path -eq $rec.path } | Select-Object -First 1
     if ($null -eq $old) { $saved.wt = @($saved.wt) + $rec; continue }
+    if (-not (Has-Prop $old 'hackerProfile')) { $old | Add-Member -NotePropertyName 'hackerProfile' -NotePropertyValue $rec.hackerProfile }
     foreach ($guid in $rec.profiles.Keys) {
       if (-not (Has-Prop $old.profiles $guid)) {
         $old.profiles | Add-Member -NotePropertyName $guid -NotePropertyValue $rec.profiles[$guid]
@@ -237,6 +258,8 @@ if (-not $NoWords) {
   Copy-Item -Path $SrcWords -Destination $WordsDest -Force
   Write-Host "Installed word layer: $WordsDest"
 }
+Copy-Item -Path $SrcStart -Destination $StartDest -Force
+Write-Host "Installed Claude // Hacker start script: $StartDest"
 
 New-Item -ItemType Directory -Force -Path $ThemeDir | Out-Null
 Copy-Item -Path $SrcTheme -Destination (Join-Path $ThemeDir ($ThemeSlug + '.json')) -Force

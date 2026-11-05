@@ -15,6 +15,7 @@ $AppName = 'terminal-matrix-theme'
 $ThemeSlug = 'matrix'
 $SchemeName = 'Matrix Green'
 $HookMarker = 'matrix-session-banner.ps1'
+$HackerGuid = '{7dee5498-89ee-42d5-a3e3-be4fd0239c50}'   # matches windows-terminal\hacker-profile.json
 $Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 
 function Read-Json([string]$Path) { Get-Content -Raw -Encoding UTF8 -Path $Path | ConvertFrom-Json }
@@ -56,6 +57,16 @@ if (Test-Path $StateFile) {
       $wt | Add-Member -NotePropertyName 'schemes' -NotePropertyValue $schemes -Force
 
       if (Has-Prop $wt.profiles 'list') { $list = $wt.profiles.list } else { $list = $wt.profiles }
+
+      # Claude // Hacker profile: remove ours, and put back a profile that had the same guid before install.
+      if ((Has-Prop $rec 'hackerProfile') -and $null -ne $rec.hackerProfile) {
+        $newList = @(@($list) | Where-Object { -not ((Has-Prop $_ 'guid') -and ([string]$_.guid -ieq $HackerGuid)) })
+        if ($rec.hackerProfile.had -and $null -ne $rec.hackerProfile.previous) { $newList = @($newList) + $rec.hackerProfile.previous }
+        if (Has-Prop $wt.profiles 'list') { $wt.profiles.list = $newList } else { $wt.profiles = $newList }
+        $list = $newList
+        Write-Host 'Removed the Claude // Hacker profile.'
+      }
+
       foreach ($pg in $rec.profiles.PSObject.Properties) {
         $prof = @($list) | Where-Object { (Has-Prop $_ 'guid') -and ([string]$_.guid -ieq $pg.Name) } | Select-Object -First 1
         if ($null -eq $prof) { continue }
