@@ -15,6 +15,8 @@
 .PARAMETER NoRain
   Skip the falling-binary background shader. The word layer (unless -NoWords) is then shown as a
   static backgroundImage instead of drifting inside the shader.
+.PARAMETER NoPrompt
+  Leave the ACCESS GRANTED prompt out of the PowerShell profile block.
 .PARAMETER NoWords
   Skip the faint background layer of programming terms.
 .PARAMETER ClaudeTheme
@@ -27,6 +29,7 @@
 param(
   [switch]$NoRain,
   [switch]$NoWords,
+  [switch]$NoPrompt,
   [switch]$NoClaudeBanner,
   [ValidateSet('ansi', 'custom')][string]$ClaudeTheme = 'ansi'
 )
@@ -301,6 +304,10 @@ if ($env:MATRIX_THEME_PROFILE_PATHS) {
   $ProfilePaths = @($ProfilePaths | Select-Object -Unique)
 }
 $block = ([System.IO.File]::ReadAllText($SrcProfileBlock, $Utf8NoBom)).TrimEnd() -replace "`r?`n", "`r`n"
+if ($NoPrompt) {
+  $promptPattern = '(\r\n)?' + [regex]::Escape('# >>> terminal-matrix-theme prompt >>>') + '[\s\S]*?' + [regex]::Escape('# <<< terminal-matrix-theme prompt <<<')
+  $block = [regex]::Replace($block, $promptPattern, '')
+}
 $blockPattern = '(\r\n)?' + [regex]::Escape($MarkStart) + '[\s\S]*?' + [regex]::Escape($MarkEnd)
 foreach ($pp in $ProfilePaths) {
   # Decode without stripping a BOM so the file round-trips byte for byte.
