@@ -56,4 +56,16 @@ if (Get-Command Set-PSReadLineOption -ErrorAction SilentlyContinue) {
     } ([char]27)
   } catch { }
 }
+# >>> terminal-matrix-theme prompt >>>
+# ACCESS GRANTED prompt (ACCESS DENIED in red after a failed command). install.ps1 -NoPrompt leaves it out.
+function global:prompt {
+  $matrixOk = $?   # must be read first, before anything else resets it
+  $matrixCode = $global:LASTEXITCODE
+  $esc = [char]27
+  if ($matrixOk) { $tag = "$esc[38;2;57;255;20mACCESS GRANTED" } else { $tag = "$esc[38;2;255;95;87mACCESS DENIED" }
+  $where = $executionContext.SessionState.Path.CurrentLocation.Path
+  $global:LASTEXITCODE = $matrixCode   # keep the real exit code for scripts that check it
+  "$tag$esc[38;2;47;158;68m :: $where$esc[0m`n$esc[38;2;0;255;65m>$esc[0m "
+}
+# <<< terminal-matrix-theme prompt <<<
 # <<< terminal-matrix-theme <<<

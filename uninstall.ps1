@@ -3,7 +3,9 @@
   Removes exactly what install.ps1 added.
 .DESCRIPTION
   Restores the Windows Terminal settings.json keys install set (and removes the Matrix Green
-  scheme), deletes the rain shader, banner script and Claude Code theme file, puts the four Claude
+  scheme and the Claude // Hacker profile), deletes the "Claude Hacker" desktop shortcut if it still
+  opens that profile, deletes the rain shader, word image, start script, banner script and Claude
+  Code theme file, puts the four Claude
   Code keys (theme, spinnerVerbs, companyAnnouncements, spinnerTipsOverride) back to their previous
   values, removes the SessionStart banner hook, and removes the marked block from PowerShell
   profiles. Anything you changed after install is left alone.
@@ -15,6 +17,7 @@ $AppName = 'terminal-matrix-theme'
 $ThemeSlug = 'matrix'
 $SchemeName = 'Matrix Green'
 $HookMarker = 'matrix-session-banner.ps1'
+$HackerGuid = '{7dee5498-89ee-42d5-a3e3-be4fd0239c50}'   # matches windows-terminal\hacker-profile.json
 $Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 
 function Read-Json([string]$Path) { Get-Content -Raw -Encoding UTF8 -Path $Path | ConvertFrom-Json }
@@ -56,6 +59,16 @@ if (Test-Path $StateFile) {
       $wt | Add-Member -NotePropertyName 'schemes' -NotePropertyValue $schemes -Force
 
       if (Has-Prop $wt.profiles 'list') { $list = $wt.profiles.list } else { $list = $wt.profiles }
+
+      # Claude // Hacker profile: remove ours, and put back a profile that had the same guid before install.
+      if ((Has-Prop $rec 'hackerProfile') -and $null -ne $rec.hackerProfile) {
+        $newList = @(@($list) | Where-Object { -not ((Has-Prop $_ 'guid') -and ([string]$_.guid -ieq $HackerGuid)) })
+        if ($rec.hackerProfile.had -and $null -ne $rec.hackerProfile.previous) { $newList = @($newList) + $rec.hackerProfile.previous }
+        if (Has-Prop $wt.profiles 'list') { $wt.profiles.list = $newList } else { $wt.profiles = $newList }
+        $list = $newList
+        Write-Host 'Removed the Claude // Hacker profile.'
+      }
+
       foreach ($pg in $rec.profiles.PSObject.Properties) {
         $prof = @($list) | Where-Object { (Has-Prop $_ 'guid') -and ([string]$_.guid -ieq $pg.Name) } | Select-Object -First 1
         if ($null -eq $prof) { continue }
@@ -125,6 +138,19 @@ if (Test-Path $StateFile) {
   Remove-Item -Force -Path $StateFile
 } else {
   Write-Host 'No install state file found; Claude Code and Windows Terminal settings left unchanged.'
+}
+
+# --- Desktop shortcut: deleted only if it still opens our profile ---
+if ($env:MATRIX_THEME_DESKTOP) { $Desktop = $env:MATRIX_THEME_DESKTOP } else { $Desktop = [Environment]::GetFolderPath('Desktop') }
+$ShortcutPath = Join-Path $Desktop 'Claude Hacker.lnk'
+if (Test-Path $ShortcutPath) {
+  $lnk = (New-Object -ComObject WScript.Shell).CreateShortcut($ShortcutPath)
+  if (($lnk.TargetPath -like '*\wt.exe') -and ($lnk.Arguments -eq '-p "Claude // Hacker"')) {
+    Remove-Item -Force -Path $ShortcutPath
+    Write-Host "Removed desktop shortcut: $ShortcutPath"
+  } else {
+    Write-Host "Left $ShortcutPath alone (it does not open the Claude // Hacker profile)."
+  }
 }
 
 # --- PowerShell profiles ---

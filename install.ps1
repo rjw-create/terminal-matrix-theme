@@ -4,27 +4,45 @@
 .DESCRIPTION
   1. Backs up Claude Code's settings.json and Windows Terminal's settings.json.
   2. Edits Windows Terminal's settings.json directly: adds the "Matrix Green" color scheme and sets
-     colorScheme, font, cursorShape (and the rain shader path unless -NoRain) on the default profile
-     and the PowerShell profiles. Previous values of exactly those keys are saved for uninstall.
+     colorScheme, font, cursorShape, the rain shader (unless -NoRain) and the word layer (unless
+     -NoWords) on the default profile and the PowerShell profiles. Previous values of exactly those
+     keys are saved for uninstall. Also adds a "Claude // Hacker" profile that runs a short boot
+     sequence and then claude.
   3. Copies the Claude Code theme into <claude home>\themes.
   4. Sets "theme", "spinnerVerbs", "companyAnnouncements" and "spinnerTipsOverride" in Claude
      Code's settings.json, and (unless -NoClaudeBanner) adds a SessionStart hook that shows a small
      banner. Other keys and other hooks are left alone.
-  5. Adds green typed-text colors and a startup banner to your PowerShell profile(s).
+  5. Adds green typed-text colors, a startup banner and (unless -NoPrompt) an ACCESS GRANTED prompt
+     to your PowerShell profile(s).
+  6. Creates a "Claude Hacker" desktop shortcut that opens the Claude // Hacker profile.
   Run uninstall.ps1 to undo.
 .PARAMETER NoRain
-  Skip the falling-binary background shader.
+  Skip the falling-binary background shader. The word layer (unless -NoWords) is then shown as a
+  static backgroundImage instead of drifting inside the shader.
+.PARAMETER NoPrompt
+  Leave the ACCESS GRANTED prompt out of the PowerShell profile block.
+.PARAMETER NoWords
+  Skip the faint background layer of programming terms.
 .PARAMETER ClaudeTheme
   'ansi' (default) sets Claude Code's theme to the built-in dark-ansi, which uses the terminal's 16 colors
   (green with the Matrix Green scheme). 'custom' sets custom:matrix, for Claude Code versions that load
   custom themes. The theme file is installed either way.
 .PARAMETER NoClaudeBanner
   Skip the Claude Code SessionStart banner hook.
+.PARAMETER RainStrength
+  Brightness of the binary rain, 0 to 1 (default 0.12). Written into the installed shader copy. If you
+  leave it out on a re-install, the value already in the installed shader is kept.
+.PARAMETER WordStrength
+  Brightness of the word layer inside the shader, 0 to 1 (default 0.35). Same re-install rule.
 #>
 param(
   [switch]$NoRain,
+  [switch]$NoWords,
+  [switch]$NoPrompt,
   [switch]$NoClaudeBanner,
-  [ValidateSet('ansi', 'custom')][string]$ClaudeTheme = 'ansi'
+  [ValidateSet('ansi', 'custom')][string]$ClaudeTheme = 'ansi',
+  [ValidateRange(0.0, 1.0)][double]$RainStrength = 0.12,
+  [ValidateRange(0.0, 1.0)][double]$WordStrength = 0.35
 )
 $ErrorActionPreference = 'Stop'
 
@@ -58,13 +76,16 @@ $WtSettings = @($WtCandidates | Where-Object { Test-Path $_ })
 
 $SrcScheme = Join-Path $PSScriptRoot 'windows-terminal\matrix-scheme.json'
 $SrcShader = Join-Path $PSScriptRoot 'windows-terminal\matrix-rain.hlsl'
+$SrcWords = Join-Path $PSScriptRoot 'windows-terminal\assets\hacker-words.png'
 $SrcTheme = Join-Path $PSScriptRoot 'claude-code\themes\matrix.json'
 $SrcVerbs = Join-Path $PSScriptRoot 'claude-code\spinner-verbs.json'
 $SrcAnnounce = Join-Path $PSScriptRoot 'claude-code\company-announcements.json'
 $SrcTips = Join-Path $PSScriptRoot 'claude-code\spinner-tips.json'
 $SrcBanner = Join-Path $PSScriptRoot ('claude-code\' + $HookMarker)
 $SrcProfileBlock = Join-Path $PSScriptRoot 'powershell\profile-block.ps1'
-foreach ($f in @($SrcScheme, $SrcShader, $SrcTheme, $SrcVerbs, $SrcAnnounce, $SrcTips, $SrcBanner, $SrcProfileBlock)) {
+$SrcHackerProfile = Join-Path $PSScriptRoot 'windows-terminal\hacker-profile.json'
+$SrcStart = Join-Path $PSScriptRoot 'powershell\start-hacker.ps1'
+foreach ($f in @($SrcScheme, $SrcShader, $SrcWords, $SrcTheme, $SrcVerbs, $SrcAnnounce, $SrcTips, $SrcBanner, $SrcProfileBlock, $SrcHackerProfile, $SrcStart)) {
   if (-not (Test-Path $f)) { throw "Missing source file: $f" }
   # Fail early if a source file is not valid JSON.
   if ($f -like '*.json') { $null = Read-Json $f }
@@ -124,13 +145,35 @@ if ($ShowBannerHook) {
 # 2c. Windows Terminal settings.json.
 $schemeDoc = Read-Json $SrcScheme
 $ShaderDest = Join-Path $AssetDir 'matrix-rain.hlsl'
+$WordsDest = Join-Path $AssetDir 'hacker-words.png'
 $ours = [ordered]@{
   colorScheme = $SchemeName
   font        = $schemeDoc.profile.font
   cursorShape = $schemeDoc.profile.cursorShape
 }
 if (-not $NoRain) { $ours['experimental.pixelShaderPath'] = $ShaderDest }
+# Words: the shader scrolls the image from texture t1; without the shader it is a static, dimmed background.
+$wordKeys = [ordered]@{}
+if (-not $NoWords) {
+  if ($NoRain) {
+    $wordKeys['backgroundImage'] = $WordsDest
+    $wordKeys['backgroundImageOpacity'] = 0.5
+  } else {
+    $wordKeys['experimental.pixelShaderImagePath'] = $WordsDest
+  }
+}
+foreach ($k in $wordKeys.Keys) { $ours[$k] = $wordKeys[$k] }
 $PowerShellGuids = @('{61c54bbd-c2c6-5271-96e7-009a87ff44bf}', '{574e775e-4f2a-5b96-ac1e-a2962a402336}')
+
+# The dedicated "Claude // Hacker" profile: fixed guid, our look, and a command that runs the start script.
+$StartDest = Join-Path $AssetDir 'start-hacker.ps1'
+$hackerDoc = Read-Json $SrcHackerProfile
+$HackerGuid = [string]$hackerDoc.guid
+$hackerProfile = [ordered]@{}
+foreach ($p in $hackerDoc.PSObject.Properties) { $hackerProfile[$p.Name] = $p.Value }
+# -NoExit keeps a prompt in the tab after claude exits.
+$hackerProfile['commandline'] = 'powershell.exe -NoLogo -NoExit -ExecutionPolicy Bypass -File "' + $StartDest + '"'
+foreach ($k in $ours.Keys) { $hackerProfile[$k] = $ours[$k] }
 
 $wtPending = @()
 foreach ($wtPath in $WtSettings) {
@@ -154,6 +197,7 @@ foreach ($wtPath in $WtSettings) {
   if (Has-Prop $wt.profiles 'list') { $list = $wt.profiles.list } else { $list = $wt.profiles }
   foreach ($prof in @($list)) {
     if (-not (Has-Prop $prof 'guid')) { continue }
+    if ([string]$prof.guid -ieq $HackerGuid) { continue }   # handled separately below
     if (-not ($targets | Where-Object { $_ -ieq [string]$prof.guid })) { continue }
     $keyRecs = [ordered]@{}
     foreach ($k in $ours.Keys) {
@@ -165,6 +209,13 @@ foreach ($wtPath in $WtSettings) {
     }
     $rec.profiles[[string]$prof.guid] = $keyRecs
   }
+
+  # Claude // Hacker profile: drop any copy with our guid, then add ours, so re-install never duplicates it.
+  $oldHacker = @(@($list) | Where-Object { (Has-Prop $_ 'guid') -and ([string]$_.guid -ieq $HackerGuid) })
+  $rec.hackerProfile = [ordered]@{ had = ($oldHacker.Count -gt 0); previous = $null }
+  if ($oldHacker.Count -gt 0) { $rec.hackerProfile.previous = $oldHacker[0] }
+  $newList = @(@($list) | Where-Object { -not ((Has-Prop $_ 'guid') -and ([string]$_.guid -ieq $HackerGuid)) }) + [pscustomobject]$hackerProfile
+  if (Has-Prop $wt.profiles 'list') { $wt.profiles.list = $newList } else { $wt.profiles = $newList }
   $state.wt += $rec
   $wtPending += [pscustomobject]@{ Path = $wtPath; Obj = $wt }
 }
@@ -175,6 +226,29 @@ if (Test-Path $StateFile) {
   $saved = Read-Json $StateFile
   foreach ($top in @('wt', 'hook')) {
     if (-not (Has-Prop $saved $top)) { $saved | Add-Member -NotePropertyName $top -NotePropertyValue $state[$top] -Force }
+  }
+  # A newer version may set keys an older install did not record. Add those (their "previous" is the
+  # value before this run, which is untouched by us), and refresh "installed" on known keys so
+  # uninstall still recognises our value after an upgrade.
+  foreach ($name in $state.keys.Keys) {
+    if (Has-Prop $saved.keys $name) { $saved.keys.$name.installed = $state.keys[$name].installed }
+    else { $saved.keys | Add-Member -NotePropertyName $name -NotePropertyValue $state.keys[$name] }
+  }
+  foreach ($rec in @($state.wt)) {
+    $old = @($saved.wt) | Where-Object { $_.path -eq $rec.path } | Select-Object -First 1
+    if ($null -eq $old) { $saved.wt = @($saved.wt) + $rec; continue }
+    if (-not (Has-Prop $old 'hackerProfile')) { $old | Add-Member -NotePropertyName 'hackerProfile' -NotePropertyValue $rec.hackerProfile }
+    foreach ($guid in $rec.profiles.Keys) {
+      if (-not (Has-Prop $old.profiles $guid)) {
+        $old.profiles | Add-Member -NotePropertyName $guid -NotePropertyValue $rec.profiles[$guid]
+        continue
+      }
+      $oldKeys = $old.profiles.$guid
+      foreach ($k in $rec.profiles[$guid].Keys) {
+        if (Has-Prop $oldKeys $k) { $oldKeys.$k.installed = $rec.profiles[$guid][$k].installed }
+        else { $oldKeys | Add-Member -NotePropertyName $k -NotePropertyValue $rec.profiles[$guid][$k] }
+      }
+    }
   }
   [System.IO.File]::WriteAllText($StateFile, ($saved | ConvertTo-Json -Depth 32), $Utf8NoBom)
 } else {
@@ -191,9 +265,35 @@ foreach ($p in $wtPending) {
   Write-Host "Updated Windows Terminal settings: $($p.Path)"
 }
 if (-not $NoRain) {
-  Copy-Item -Path $SrcShader -Destination $ShaderDest -Force
+  # Invariant culture: HLSL needs "0.12", and some Windows locales would format it as "0,12".
+  $inv = [System.Globalization.CultureInfo]::InvariantCulture
+  $shaderText = [System.IO.File]::ReadAllText($SrcShader, $Utf8NoBom)
+  $oldShader = $null
+  if (Test-Path $ShaderDest) { $oldShader = [System.IO.File]::ReadAllText($ShaderDest, $Utf8NoBom) }
+  foreach ($tune in @(@('RAIN_STRENGTH', 'RainStrength', $RainStrength), @('WORD_STRENGTH', 'WordStrength', $WordStrength))) {
+    $define = $tune[0]; $param = $tune[1]; $value = $tune[2]
+    $pattern = '(?m)^#define ' + $define + ' ([0-9.]+)\s*$'
+    # Without the switch, a re-install keeps the value already in the installed shader.
+    if (-not $PSBoundParameters.ContainsKey($param) -and $null -ne $oldShader) {
+      $m = [regex]::Match($oldShader, $pattern)
+      if ($m.Success) {
+        $kept = [double]::Parse($m.Groups[1].Value, $inv)
+        if ($kept -ge 0 -and $kept -le 1) { $value = $kept }
+      }
+    }
+    if (-not [regex]::IsMatch($shaderText, $pattern)) { throw "Missing #define $define in $SrcShader" }
+    $shaderText = [regex]::Replace($shaderText, $pattern, ('#define ' + $define + ' ' + $value.ToString('0.0##', $inv)))
+    Write-Host "Shader $define = $($value.ToString('0.0##', $inv))"
+  }
+  [System.IO.File]::WriteAllText($ShaderDest, $shaderText, $Utf8NoBom)
   Write-Host "Installed shader: $ShaderDest"
 }
+if (-not $NoWords) {
+  Copy-Item -Path $SrcWords -Destination $WordsDest -Force
+  Write-Host "Installed word layer: $WordsDest"
+}
+Copy-Item -Path $SrcStart -Destination $StartDest -Force
+Write-Host "Installed Claude // Hacker start script: $StartDest"
 
 New-Item -ItemType Directory -Force -Path $ThemeDir | Out-Null
 Copy-Item -Path $SrcTheme -Destination (Join-Path $ThemeDir ($ThemeSlug + '.json')) -Force
@@ -235,6 +335,10 @@ if ($env:MATRIX_THEME_PROFILE_PATHS) {
   $ProfilePaths = @($ProfilePaths | Select-Object -Unique)
 }
 $block = ([System.IO.File]::ReadAllText($SrcProfileBlock, $Utf8NoBom)).TrimEnd() -replace "`r?`n", "`r`n"
+if ($NoPrompt) {
+  $promptPattern = '(\r\n)?' + [regex]::Escape('# >>> terminal-matrix-theme prompt >>>') + '[\s\S]*?' + [regex]::Escape('# <<< terminal-matrix-theme prompt <<<')
+  $block = [regex]::Replace($block, $promptPattern, '')
+}
 $blockPattern = '(\r\n)?' + [regex]::Escape($MarkStart) + '[\s\S]*?' + [regex]::Escape($MarkEnd)
 foreach ($pp in $ProfilePaths) {
   # Decode without stripping a BOM so the file round-trips byte for byte.
@@ -255,6 +359,27 @@ foreach ($pp in $ProfilePaths) {
   }
   [System.IO.File]::WriteAllBytes($pp, $Utf8NoBom.GetBytes($new))
   Write-Host "Wrote Matrix block (typed-text colors and banner) in: $pp"
+}
+
+# --- 6. Desktop shortcut that opens the Claude // Hacker profile -------------
+# GetFolderPath follows a OneDrive-redirected desktop. MATRIX_THEME_DESKTOP overrides it, for testing.
+if ($env:MATRIX_THEME_DESKTOP) { $Desktop = $env:MATRIX_THEME_DESKTOP } else { $Desktop = [Environment]::GetFolderPath('Desktop') }
+$ShortcutPath = Join-Path $Desktop 'Claude Hacker.lnk'
+$ShortcutArgs = '-p "' + $hackerDoc.name + '"'
+$wtExe = Get-Command wt.exe -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+$shell = New-Object -ComObject WScript.Shell
+if ($null -eq $wtExe) {
+  Write-Host 'Skipped the desktop shortcut: wt.exe was not found on PATH.'
+} elseif ((Test-Path $ShortcutPath) -and ($shell.CreateShortcut($ShortcutPath).Arguments -ne $ShortcutArgs)) {
+  Write-Host "Skipped the desktop shortcut: $ShortcutPath already exists and is not ours."
+} else {
+  $lnk = $shell.CreateShortcut($ShortcutPath)
+  $lnk.TargetPath = $wtExe.Source
+  $lnk.Arguments = $ShortcutArgs
+  $lnk.WorkingDirectory = $HOME
+  $lnk.Description = 'Opens Claude Code in the Claude // Hacker Windows Terminal profile'
+  $lnk.Save()
+  Write-Host "Created desktop shortcut: $ShortcutPath"
 }
 
 Write-Host ''
