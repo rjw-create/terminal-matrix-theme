@@ -22,6 +22,32 @@ $Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 
 function Read-Json([string]$Path) { Get-Content -Raw -Encoding UTF8 -Path $Path | ConvertFrom-Json }
 function Has-Prop($Obj, [string]$Name) { $Obj.PSObject.Properties.Name -contains $Name }
+# The first version saved flat hadTheme/previousTheme/hadSpinnerVerbs/previousSpinnerVerbs instead of a
+# "keys" map, and later versions never recorded companyAnnouncements or spinnerTipsOverride in it.
+# Convert that shape on read, keeping every "previous" value. For the keys it never recorded, the
+# pre-theme value comes from the first install's backup of settings.json (listed under "backups"),
+# or counts as "not set" if that backup is gone. "installed" is unknown (null) for converted keys.
+function Convert-OldState($State, [string]$SettingsPath) {
+  if (Has-Prop $State 'keys') { return $State }
+  $before = $null
+  $bak = @($State.backups) | Where-Object { $_ -and ([string]$_).StartsWith($SettingsPath + '.bak-', [StringComparison]::OrdinalIgnoreCase) -and (Test-Path $_) } | Select-Object -First 1
+  if ($bak) { $before = Read-Json $bak }
+  $keys = [ordered]@{}
+  foreach ($name in @('theme', 'spinnerVerbs', 'companyAnnouncements', 'spinnerTipsOverride')) {
+    $flat = $name.Substring(0, 1).ToUpper() + $name.Substring(1)
+    if (Has-Prop $State ('had' + $flat)) {
+      $had = [bool]$State.('had' + $flat); $prev = $State.('previous' + $flat)
+    } elseif ($null -ne $before -and (Has-Prop $before $name)) {
+      $had = $true; $prev = $before.$name
+    } else {
+      $had = $false; $prev = $null
+    }
+    $keys[$name] = [pscustomobject]@{ had = $had; previous = $prev; installed = $null }
+  }
+  foreach ($old in @('hadTheme', 'previousTheme', 'hadSpinnerVerbs', 'previousSpinnerVerbs')) { $State.PSObject.Properties.Remove($old) }
+  $State | Add-Member -NotePropertyName 'keys' -NotePropertyValue ([pscustomobject]$keys)
+  return $State
+}
 
 if ($env:CLAUDE_CONFIG_DIR) { $ClaudeHome = $env:CLAUDE_CONFIG_DIR } else { $ClaudeHome = Join-Path $HOME '.claude' }
 $ClaudeSettings = Join-Path $ClaudeHome 'settings.json'
@@ -45,7 +71,7 @@ if (Test-Path $ThemeFile) {
 }
 
 if (Test-Path $StateFile) {
-  $state = Read-Json $StateFile
+  $state = Convert-OldState (Read-Json $StateFile) $ClaudeSettings
 
   # --- Windows Terminal settings.json ---
   if (Has-Prop $state 'wt') {
@@ -99,8 +125,10 @@ if (Test-Path $StateFile) {
       $rec = $entry.Value
       if (-not (Has-Prop $settings $name)) { continue }
       # Only touch a key that still holds the value install wrote; anything you changed since stays.
+      # A null "installed" comes from a converted first-version state file, which never recorded it;
+      # that version's uninstall restored unconditionally, so this does too.
       $current = $settings.$name | ConvertTo-Json -Compress -Depth 32
-      if ($current -ne $rec.installed) {
+      if ($null -ne $rec.installed -and $current -ne $rec.installed) {
         Write-Host "Left $name alone (it was changed after install)."
         continue
       }
